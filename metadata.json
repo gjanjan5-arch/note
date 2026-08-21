@@ -1,0 +1,6 @@
+{
+  "name": "Tindahan Notes",
+  "description": "Offline-First AI Sari-Sari Store Notebook for instant sales logging, pautang ledger, inventory tracking, and AI business advisor.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

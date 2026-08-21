@@ -1,0 +1,118 @@
+@import "tailwindcss";
+
+:root {
+  --color-primary: #2563eb;
+  --color-primary-foreground: #ffffff;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-bg: #1e3a8a;
+  --color-primary-fg: #ffffff;
+  --color-accent: #60a5fa;
+  --color-accent-hover: #93c5fd;
+  --color-accent-text: #93c5fd;
+  --color-background: #0b1329;
+  --color-surface: #111d3d;
+  --color-surface-elevated: #16254c;
+  --color-surface-card: #16254c;
+  --color-surface-hover: #1d3061;
+  --color-surface-header: #070e20;
+  --color-surface-nav: #070e20;
+  --color-surface-subtle: #182952;
+  --color-text: #f8fafc;
+  --color-text-secondary: #94a3b8;
+  --color-text-muted: #64748b;
+  --color-border: #233876;
+  --color-border-subtle: #192a59;
+  --color-card-border: #233876;
+  --color-input: #0d1733;
+  --color-input-bg: #0d1733;
+  --color-input-border: #2a438c;
+  --color-hover: #1d3061;
+  --color-selected: #1e3a8a;
+  --color-badge-bg: #1e3a8a;
+  --color-badge-text: #93c5fd;
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-text);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Central Theme Classes */
+.theme-bg-app {
+  background-color: var(--color-background);
+}
+.theme-text-app {
+  color: var(--color-text);
+}
+.theme-text-secondary {
+  color: var(--color-text-secondary);
+}
+.theme-text-muted {
+  color: var(--color-text-muted);
+}
+.theme-text-accent {
+  color: var(--color-accent);
+}
+.theme-text-primary {
+  color: var(--color-primary);
+}
+.theme-bg-surface {
+  background-color: var(--color-surface);
+}
+.theme-bg-surface-elevated {
+  background-color: var(--color-surface-elevated);
+}
+.theme-bg-card {
+  background-color: var(--color-surface-card);
+}
+.theme-bg-surface-subtle {
+  background-color: var(--color-surface-subtle);
+}
+.theme-bg-header {
+  background-color: var(--color-surface-header);
+}
+.theme-bg-nav {
+  background-color: var(--color-surface-nav);
+}
+.theme-bg-primary {
+  background-color: var(--color-primary);
+  color: var(--color-primary-fg);
+}
+.theme-bg-primary:hover {
+  background-color: var(--color-primary-hover);
+}
+.theme-bg-accent {
+  background-color: var(--color-accent);
+}
+.theme-border {
+  border-color: var(--color-border);
+}
+.theme-border-subtle {
+  border-color: var(--color-border-subtle);
+}
+.theme-card {
+  background-color: var(--color-surface-card);
+  border-color: var(--color-card-border);
+  color: var(--color-text);
+}
+.theme-input {
+  background-color: var(--color-input-bg);
+  border-color: var(--color-input-border);
+  color: var(--color-text);
+}
+.theme-input:focus {
+  border-color: var(--color-primary);
+  outline: none;
+}
+.theme-badge {
+  background-color: var(--color-badge-bg);
+  color: var(--color-badge-text);
+}
+.theme-hover:hover {
+  background-color: var(--color-hover);
+}
+.theme-selected {
+  background-color: var(--color-selected);
+}
