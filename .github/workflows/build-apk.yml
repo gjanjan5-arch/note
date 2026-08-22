@@ -43,8 +43,14 @@ jobs:
         working-directory: ./android
         run: ./gradlew assembleDebug
 
+      - name: Rename APK File
+        run: |
+          cd android/app/build/outputs/apk/debug/
+          # Find whatever debug apk was generated and rename it
+          mv *.apk Tindahan-Notes.apk
+
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tindahan-apk
+          name: tindahan-notes-apk
           path: android/app/build/outputs/apk/debug/Tindahan-Notes.apk
