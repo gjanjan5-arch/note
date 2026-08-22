@@ -64,7 +64,7 @@ jobs:
 
       - name: Make Gradle Executable
         run: chmod +x gradlew
-        working-directory: ./android
+        
 
       - name: Build Debug APK
         working-directory: ./android
