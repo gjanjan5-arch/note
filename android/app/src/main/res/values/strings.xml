@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Tindahan Notes</string>
+    <string name="title_activity_main">Tindahan Notes</string>
+    <string name="package_name">com.tindahanNotes.app</string>
+    <string name="custom_url_scheme">com.tindahanNotes.app</string>
+</resources>
