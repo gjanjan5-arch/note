@@ -30,10 +30,10 @@ jobs:
           npm install
           npm run build
 
-      - name: Install Capacitor & Add Android Platform
+      - name: Add Android Platform & Sync
         run: |
-          npx cap init "Tindahan App" com.tindahan.app --web-dir dist
-          npx cap add android
+          # If the android folder isn't tracked in git, add it; otherwise just sync safely
+          npx cap add android || true
           npx cap sync
 
       - name: Make Gradle Executable
@@ -48,4 +48,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: tindahan-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: android/app/build/outputs/apk/debug/Tindahan-Notes.apk
