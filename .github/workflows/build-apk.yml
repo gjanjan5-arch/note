@@ -35,6 +35,33 @@ jobs:
           npx cap add android || true
           npx cap sync
 
+      - name: Setup Signing Keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/tindahan-release.jks
+          
+          # Inject signing config into build.gradle automatically
+          cat << 'EOF' >> android/app/build.gradle
+
+          android {
+              signingConfigs {
+                  release {
+                      storeFile file('tindahan-release.jks')
+                      storePassword '${{ secrets.KEYSTORE_PASSWORD }}'
+                      keyAlias '${{ secrets.KEY_ALIAS }}'
+                      keyPassword '${{ secrets.KEYSTORE_PASSWORD }}'
+                  }
+              }
+              buildTypes {
+                  debug {
+                      signingConfig signingConfigs.release
+                  }
+                  release {
+                      signingConfig signingConfigs.release
+                  }
+              }
+          }
+          EOF
+
       - name: Make Gradle Executable
         working-directory: ./android
         run: chmod +x gradlew
@@ -46,7 +73,6 @@ jobs:
       - name: Rename APK File
         run: |
           cd android/app/build/outputs/apk/debug/
-          # Find whatever debug apk was generated and rename it
           mv *.apk Tindahan-Notes.apk
 
       - name: Upload APK Artifact
