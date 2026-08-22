@@ -30,6 +30,9 @@ jobs:
           npm install
           npm run build
 
+      - name: Sync Capacitor Native Assets
+        run: npx cap sync android
+
       - name: Add Android Platform & Sync
         run: |
           npx cap add android || true
