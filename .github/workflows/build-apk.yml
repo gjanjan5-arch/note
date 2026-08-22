@@ -63,8 +63,8 @@ jobs:
           EOF
 
       - name: Make Gradle Executable
-        working-directory: ./android
         run: chmod +x gradlew
+        working-directory: ./android
 
       - name: Build Debug APK
         working-directory: ./android
