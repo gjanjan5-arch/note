@@ -13,6 +13,7 @@ export interface Transaction {
   dateStr: string; // YYYY-MM-DD
   type: TransactionType;
   customerName?: string | null;
+  handledBy?: string; // Optional: who paid or who took the credit if not the main customer
   items: TransactionItem[];
   totalAmount: number;
   rawNote: string;
@@ -36,6 +37,19 @@ export interface Customer {
   currentBalance: number; // Positive = owes money to store
   lastTransactionAt: number;
   notes?: string;
+  nickname?: string;
+  creditLimit?: number;
+}
+
+export type ProductItemType = 'STANDARD' | 'PACK_VARIETY';
+
+export interface InventoryVariant {
+  id?: string;
+  label: string;
+  unitPrice: number;
+  unitCost?: number;
+  stock?: number;
+  barcode?: string;
 }
 
 export interface InventoryItem {
@@ -47,6 +61,16 @@ export interface InventoryItem {
   unitPrice: number;
   minStockAlert: number;
   updatedAt: number;
+  itemType?: ProductItemType;
+  quickIcon?: string;
+  tileColor?: string;
+  sku?: string;
+  photo?: string;
+  variants?: InventoryVariant[];
+  description?: string;
+  quantity?: number;
+  unit?: string;
+  [key: string]: any;
 }
 
 export interface ParsedNoteResult {
@@ -70,3 +94,37 @@ export interface ChatMessage {
 }
 
 export type ImageSizeOption = '1K' | '2K' | '4K';
+
+export interface CatalogItem {
+  id?: string;
+  name: string;
+  price: number;
+  stock: number;
+  sku?: string;
+  category?: string;
+  unitPrice?: number;
+  icon?: string;
+  unit?: string;
+  variants?: Array<{ label: string; price: number }>;
+}
+
+export interface CatalogPayload {
+  v: number;
+  type: 'STORE_CATALOG';
+  storeName: string;
+  ownerName?: string;
+  contactNumber?: string;
+  storeAddress?: string;
+  gcashNumber?: string;
+  purchaseMessage?: string;
+  offlineText?: string;
+  // New fields for enhanced QR broadcast
+  g?: string; // GCash
+  p?: string; // Phone
+  loc?: string; // Location
+  m?: string; // Greeting
+  ts: number;
+  items: CatalogItem[];
+  page?: number;
+  totalPages?: number;
+}

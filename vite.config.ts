@@ -9,6 +9,21 @@ export default defineConfig(() => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
+        'motion/react': path.resolve(__dirname, './src/utils/motionShim.tsx'),
+      },
+      dedupe: ['react', 'react-dom'],
+    },
+    build: {
+      rollupOptions: {
+        onwarn(warning, defaultHandler) {
+          if (
+            warning.code === 'MODULE_LEVEL_DIRECTIVE' &&
+            warning.message?.includes('"use client"')
+          ) {
+            return;
+          }
+          defaultHandler(warning);
+        },
       },
     },
     server: {

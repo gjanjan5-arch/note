@@ -1,3 +1,5 @@
+import { safeStorage } from './safeStorage';
+
 export type ThemePalette = 'oceanic' | 'botanical' | 'sunset' | 'lavender';
 export type AppearanceMode = 'dark' | 'light' | 'amoled';
 
@@ -72,8 +74,8 @@ export const APPEARANCE_MODES: AppearanceModeInfo[] = [
 const THEME_SETTINGS_KEY = 'tindahan_theme_settings';
 
 export const DEFAULT_THEME_SETTINGS: ThemeSettings = {
-  palette: 'oceanic',
-  mode: 'dark',
+  palette: 'botanical',
+  mode: 'light',
 };
 
 // Complete palette & appearance color definitions
@@ -433,7 +435,7 @@ const THEME_DEFINITIONS: Record<ThemePalette, Record<AppearanceMode, ColorThemeT
 
 export function getThemeSettings(): ThemeSettings {
   try {
-    const raw = localStorage.getItem(THEME_SETTINGS_KEY);
+    const raw = safeStorage.getItem(THEME_SETTINGS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       const palette: ThemePalette =
@@ -454,7 +456,7 @@ export function getThemeSettings(): ThemeSettings {
 
 export function saveThemeSettings(settings: ThemeSettings): void {
   try {
-    localStorage.setItem(THEME_SETTINGS_KEY, JSON.stringify(settings));
+    safeStorage.setItem(THEME_SETTINGS_KEY, JSON.stringify(settings));
   } catch (e) {
     // ignore
   }
@@ -468,7 +470,7 @@ export function applyTheme(settings: ThemeSettings): void {
   const palette = settings.palette || DEFAULT_THEME_SETTINGS.palette;
   const mode = settings.mode || DEFAULT_THEME_SETTINGS.mode;
 
-  const tokens = THEME_DEFINITIONS[palette]?.[mode] || THEME_DEFINITIONS.oceanic.dark;
+  const tokens = THEME_DEFINITIONS[palette]?.[mode] || THEME_DEFINITIONS.botanical.light;
 
   // Set data attributes
   root.setAttribute('data-theme-palette', palette);
@@ -504,4 +506,23 @@ export function applyTheme(settings: ThemeSettings): void {
   root.style.setProperty('--color-selected', tokens.selected || tokens.primaryBg);
   root.style.setProperty('--color-badge-bg', tokens.badgeBg);
   root.style.setProperty('--color-badge-text', tokens.badgeText);
+
+  // Update browser/Android status bar theme-color meta tag
+  try {
+    let themeMeta = document.querySelector('meta[name="theme-color"]');
+    if (!themeMeta) {
+      themeMeta = document.createElement('meta');
+      themeMeta.setAttribute('name', 'theme-color');
+      document.head.appendChild(themeMeta);
+    }
+    themeMeta.setAttribute('content', tokens.surfaceHeader || tokens.primary);
+  } catch {
+    // Ignore in non-browser environments
+  }
+
+  // Ensure body scroll is not locked after theme switch if no modals are open
+  const isModalOpen = document.querySelectorAll('.fixed.inset-0.z-50').length > 0;
+  if (!isModalOpen) {
+    document.body.style.overflow = '';
+  }
 }

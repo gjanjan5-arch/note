@@ -37,6 +37,7 @@ export const QuickNoteComposer: React.FC<QuickNoteComposerProps> = ({
   const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
   const [noteText, setNoteText] = useState('');
   const [isAutoDelete, setIsAutoDelete] = useState(false);
+  const [timerMinutes, setTimerMinutes] = useState<number>(5);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [now, setNow] = useState(Date.now());
@@ -96,6 +97,23 @@ export const QuickNoteComposer: React.FC<QuickNoteComposerProps> = ({
       const targetH = saved !== null ? Math.max(minH, Math.min(maxH, saved)) : defaultH;
       setWindowHeight(targetH);
     }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    const originalTouchAction = document.body.style.touchAction;
+    const originalOverscroll = document.body.style.overscrollBehavior;
+
+    document.body.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
+    document.body.style.overscrollBehavior = 'none';
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      document.body.style.touchAction = originalTouchAction;
+      document.body.style.overscrollBehavior = originalOverscroll || '';
+    };
   }, [isOpen]);
 
   // --- VERTICAL RESIZE HANDLERS ---
@@ -270,12 +288,18 @@ export const QuickNoteComposer: React.FC<QuickNoteComposerProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      fetchNotes();
+      fetchNotes().catch((err) => console.warn('Error fetching notes on open:', err));
       const interval = setInterval(() => {
         setNow(Date.now());
-        cleanExpiredNotes().then((cleaned) => {
-          if (cleaned > 0) fetchNotes();
-        });
+        cleanExpiredNotes()
+          .then((cleaned) => {
+            if (cleaned > 0) {
+              fetchNotes().catch((err) => console.warn('Error fetching notes after clean:', err));
+            }
+          })
+          .catch((err) => {
+            console.warn('Error cleaning expired notes:', err);
+          });
       }, 10000);
       return () => clearInterval(interval);
     }
@@ -324,13 +348,7 @@ export const QuickNoteComposer: React.FC<QuickNoteComposerProps> = ({
         let updatedExpiresAt: number | null = null;
 
         if (isAutoDelete) {
-          if (existing && existing.autoDelete && existing.expiresAt && existing.expiresAt > currentTime) {
-            // Keep existing expiration timestamp if already active
-            updatedExpiresAt = existing.expiresAt;
-          } else {
-            // Newly enabling auto-delete: starts 30-minute countdown at this exact moment
-            updatedExpiresAt = currentTime + 30 * 60 * 1000;
-          }
+          updatedExpiresAt = currentTime + timerMinutes * 60 * 1000;
         } else {
           // Disabled: permanent
           updatedExpiresAt = null;
@@ -349,7 +367,7 @@ export const QuickNoteComposer: React.FC<QuickNoteComposerProps> = ({
           createdAt: currentTime,
           updatedAt: currentTime,
           autoDelete: isAutoDelete,
-          expiresAt: isAutoDelete ? currentTime + 30 * 60 * 1000 : null,
+          expiresAt: isAutoDelete ? currentTime + timerMinutes * 60 * 1000 : null,
         };
 
         await db.notes.add(newNote);
@@ -405,30 +423,34 @@ export const QuickNoteComposer: React.FC<QuickNoteComposerProps> = ({
   return (
     <AnimatePresence>
       {isOpen && (
-        <>
-          {/* Blurred & Dimmed Interaction-Blocking Backdrop */}
+        <motion.div
+          key="mabilisang-tala-backdrop"
+          id="mabilisang-tala-backdrop"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.16 }}
+          onClick={onClose}
+          onTouchMove={(e) => {
+            // Block touch scrolling on underlying application
+            e.preventDefault();
+          }}
+          className="fixed inset-0 z-50 bg-black/40 dark:bg-black/60 backdrop-blur-xs select-none pointer-events-auto"
+          aria-hidden="true"
+        />
+      )}
+      {isOpen && (
+        <motion.div
+          key="mabilisang-tala-modal-container"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          id="mabilisang-tala-modal-container"
+          className="fixed inset-0 pointer-events-none z-50 flex items-end justify-center sm:justify-end p-0 sm:pb-4 sm:pr-4 overflow-hidden select-none"
+        >
           <motion.div
-            id="mabilisang-tala-backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.16 }}
-            onClick={onClose}
-            onTouchMove={(e) => {
-              // Block touch scrolling on underlying application
-              e.preventDefault();
-            }}
-            className="fixed inset-0 z-50 bg-black/40 dark:bg-black/60 backdrop-blur-xs select-none pointer-events-auto"
-            aria-hidden="true"
-          />
-
-          {/* Floating Movable & Resizable Mabilisang Tala Sheet Container */}
-          <div
-            id="mabilisang-tala-modal-container"
-            className="fixed inset-0 pointer-events-none z-50 flex items-end justify-center sm:justify-end p-0 sm:pb-4 sm:pr-4 overflow-hidden select-none"
-          >
-            <motion.div
-              id="mabilisang-tala-sheet"
+            key="mabilisang-tala-sheet"
+            id="mabilisang-tala-sheet"
               initial={{ y: 80, opacity: 0, scale: 0.96 }}
               animate={{ y: 0, opacity: 1, scale: 1 }}
               exit={{ y: 80, opacity: 0, scale: 0.96 }}
@@ -628,36 +650,68 @@ export const QuickNoteComposer: React.FC<QuickNoteComposerProps> = ({
                     )}
                   </div>
 
-                  {/* Auto-delete Checkbox Option (Permanent by default, optional 30m toggle) */}
-                  <label
-                    htmlFor="note-auto-delete-toggle"
-                    className={`p-2.5 rounded-2xl border flex items-start gap-2.5 cursor-pointer select-none transition-all duration-150 active:scale-[0.99] ${
+                  {/* Auto-delete Checkbox Option & Timer Presets */}
+                  <div
+                    className={`p-2.5 rounded-2xl border space-y-2 transition-all duration-150 ${
                       isAutoDelete
                         ? 'theme-bg-surface border-amber-500/30'
                         : 'theme-bg-surface-subtle theme-border-subtle'
                     }`}
                   >
-                    <input
-                      id="note-auto-delete-toggle"
-                      type="checkbox"
-                      checked={isAutoDelete}
-                      onChange={(e) => setIsAutoDelete(e.target.checked)}
-                      className="mt-0.5 w-4 h-4 rounded border-gray-400 text-[var(--color-primary)] focus:ring-[var(--color-primary)] cursor-pointer transition-transform duration-100 active:scale-90"
-                    />
-                    <div className="text-xs theme-text-app">
-                      <div className="flex items-center gap-1.5 font-bold">
-                        <Clock
-                          className={`w-3.5 h-3.5 transition-colors duration-150 ${
-                            isAutoDelete ? 'text-amber-400' : 'theme-text-accent'
-                          }`}
-                        />
-                        <span>{translate(lang, 'auto_delete_30min')}</span>
+                    <label
+                      htmlFor="note-auto-delete-toggle"
+                      className="flex items-start gap-2.5 cursor-pointer select-none"
+                    >
+                      <input
+                        id="note-auto-delete-toggle"
+                        type="checkbox"
+                        checked={isAutoDelete}
+                        onChange={(e) => setIsAutoDelete(e.target.checked)}
+                        className="mt-0.5 w-4 h-4 rounded border-gray-400 text-[var(--color-primary)] focus:ring-[var(--color-primary)] cursor-pointer transition-transform duration-100 active:scale-90"
+                      />
+                      <div className="text-xs theme-text-app">
+                        <div className="flex items-center gap-1.5 font-bold">
+                          <Clock
+                            className={`w-3.5 h-3.5 transition-colors duration-150 ${
+                              isAutoDelete ? 'text-amber-400' : 'theme-text-accent'
+                            }`}
+                          />
+                          <span>{lang === 'tl' ? 'Lagyan ng Timer / Auto-delete' : 'Set Timer / Auto-delete'}</span>
+                        </div>
+                        <p className="text-[10.5px] theme-text-secondary font-medium mt-0.5">
+                          {translate(lang, 'auto_delete_hint')}
+                        </p>
                       </div>
-                      <p className="text-[10.5px] theme-text-secondary font-medium mt-0.5">
-                        {translate(lang, 'auto_delete_hint')}
-                      </p>
-                    </div>
-                  </label>
+                    </label>
+
+                    {/* Duration Pills when Auto-Delete is active */}
+                    {isAutoDelete && (
+                      <div className="pt-2 border-t border-amber-500/20 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                        <span className="text-[10px] font-bold theme-text-secondary shrink-0">
+                          {lang === 'tl' ? 'Oras:' : 'Timer:'}
+                        </span>
+                        {[
+                          { mins: 5, label: '⚡ 5m (Express)' },
+                          { mins: 15, label: '15m' },
+                          { mins: 30, label: '30m' },
+                          { mins: 60, label: '1h' },
+                        ].map((preset) => (
+                          <button
+                            key={preset.mins}
+                            type="button"
+                            onClick={() => setTimerMinutes(preset.mins)}
+                            className={`px-2.5 py-1 rounded-xl text-[11px] font-black transition-all shrink-0 active:scale-95 cursor-pointer ${
+                              timerMinutes === preset.mins
+                                ? 'bg-amber-500 text-slate-950 shadow-xs'
+                                : 'theme-bg-surface-subtle theme-text-secondary hover:theme-text-app'
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
 
                   {/* Composer Buttons */}
                   <div className="flex items-center justify-end gap-2 pt-2 border-t theme-border-subtle">
@@ -760,8 +814,14 @@ export const QuickNoteComposer: React.FC<QuickNoteComposerProps> = ({
                                     <span>
                                       {minutesLeft !== null
                                         ? minutesLeft <= 1
-                                          ? '< 1m left'
+                                          ? lang === 'tl'
+                                            ? '< 1m nalalabi'
+                                            : '< 1m left'
+                                          : lang === 'tl'
+                                          ? `${minutesLeft}m nalalabi`
                                           : `${minutesLeft}m left`
+                                        : lang === 'tl'
+                                        ? 'Mag-e-expire'
                                         : 'Expiring'}
                                     </span>
                                   </button>
@@ -812,8 +872,7 @@ export const QuickNoteComposer: React.FC<QuickNoteComposerProps> = ({
               )}
             </div>
           </motion.div>
-        </div>
-        </>
+        </motion.div>
       )}
     </AnimatePresence>
   );

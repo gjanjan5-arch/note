@@ -1,6 +1,7 @@
 import Dexie, { type Table } from 'dexie';
 import type { Transaction, Customer, InventoryItem, Note, TransactionType } from '../types';
 import { getStoreProfile, saveStoreProfile, type StoreProfile } from '../utils/storeSettings';
+import { getLocalDateStr } from '../utils/formatters';
 
 export class TindahanDatabase extends Dexie {
   transactions!: Table<Transaction>;
@@ -43,6 +44,20 @@ export class TindahanDatabase extends Dexie {
       } catch (err) {
         console.warn('Upgrade note migration:', err);
       }
+    });
+    // Version 3: Ensure resilient non-crashing schema stability across APK upgrades
+    this.version(3).stores({
+      transactions: '++id, timestamp, dateStr, type, customerName, syncStatus',
+      customers: '++id, &name, currentBalance, lastTransactionAt',
+      inventory: '++id, &name, category, stock',
+      notes: '++id, createdAt, updatedAt, autoDelete, expiresAt',
+    });
+    // Version 4: Add sku index for offline barcode scanner lookups (photo & variants stored seamlessly)
+    this.version(4).stores({
+      transactions: '++id, timestamp, dateStr, type, customerName, syncStatus',
+      customers: '++id, &name, currentBalance, lastTransactionAt',
+      inventory: '++id, &name, category, stock, sku',
+      notes: '++id, createdAt, updatedAt, autoDelete, expiresAt',
     });
   }
 }
@@ -145,13 +160,81 @@ export async function cleanExpiredNotes(): Promise<number> {
 }
 
 /**
+ * Recalculates a customer's total outstanding balance based on all their credit and payment transactions.
+ */
+export async function recalculateCustomerBalance(customerName: string): Promise<number> {
+  const normName = customerName.trim().toLowerCase();
+  const txs = await db.transactions
+    .filter((tx) => (tx.customerName || '').trim().toLowerCase() === normName)
+    .toArray();
+
+  let totalCredit = 0;
+  let totalPaid = 0;
+  let lastTxTime = 0;
+
+  for (const tx of txs) {
+    if (tx.timestamp > lastTxTime) {
+      lastTxTime = tx.timestamp;
+    }
+    if (tx.type === 'PAUTANG_RECORD') {
+      totalCredit += tx.totalAmount || 0;
+    } else if (tx.type === 'PAUTANG_PAYMENT') {
+      totalPaid += tx.totalAmount || 0;
+    }
+  }
+
+  const newBalance = Math.max(0, totalCredit - totalPaid);
+
+  const customer = await db.customers
+    .filter((c) => c.name.trim().toLowerCase() === normName)
+    .first();
+
+  if (customer && customer.id) {
+    await db.customers.update(customer.id, {
+      currentBalance: newBalance,
+      lastTransactionAt: lastTxTime > 0 ? lastTxTime : customer.lastTransactionAt,
+    });
+  }
+
+  return newBalance;
+}
+
+/**
+ * Updates an existing transaction record and automatically recalculates customer balance if applicable.
+ */
+export async function updateTransactionEntry(
+  txId: number,
+  updates: Partial<Transaction>
+): Promise<void> {
+  const existing = await db.transactions.get(txId);
+  if (!existing) {
+    throw new Error('Transaction not found');
+  }
+
+  const previousCustomer = existing.customerName;
+  await db.transactions.update(txId, updates);
+
+  // Recalculate customer balance if it is a credit or payment transaction
+  if (existing.type === 'PAUTANG_RECORD' || existing.type === 'PAUTANG_PAYMENT') {
+    if (previousCustomer) {
+      await recalculateCustomerBalance(previousCustomer);
+    }
+    if (updates.customerName && updates.customerName !== previousCustomer) {
+      await recalculateCustomerBalance(updates.customerName);
+    }
+  }
+}
+
+/**
  * Initializes DB connection without overwriting or injecting fake data.
  * Real store records are strictly preserved.
  * Safely cleans expired temporary notes and requests persistent storage.
  */
 export async function initializeDatabase(): Promise<void> {
   try {
-    await db.open();
+    if (!db.isOpen()) {
+      await db.open();
+    }
     // Check and migrate legacy notes safely
     await migrateLegacyNotes();
     // Clean expired temporary notes on app startup
@@ -204,12 +287,12 @@ export function validateBackupPayload(parsed: any): BackupValidationResult {
     return { valid: false, error: 'Invalid backup file: Not a valid JSON object.' };
   }
 
-  // Verify app identifier
+  // Verify app identifier (supports both Tinda and Tindahan Notes for seamless backward compatibility)
   const appIdentifier = parsed.app || parsed.appName;
-  if (appIdentifier !== 'Tindahan Notes') {
+  if (appIdentifier !== 'Tinda' && appIdentifier !== 'Tindahan Notes') {
     return {
       valid: false,
-      error: 'Invalid or unsupported Tindahan Notes backup. The file identifier does not match Tindahan Notes.',
+      error: 'Invalid or unsupported backup. The file identifier does not match Tinda.',
     };
   }
 
@@ -365,9 +448,9 @@ export function validateBackupPayload(parsed: any): BackupValidationResult {
   return {
     valid: true,
     data: {
-      app: 'Tindahan Notes',
+      app: parsed.app || 'Tinda',
       backupVersion: parsed.backupVersion || 1,
-      appVersion: parsed.appVersion || parsed.version || '2.0.0',
+      appVersion: parsed.appVersion || parsed.version || '1.0.0',
       createdAt: parsed.createdAt || parsed.exportedAt || new Date().toISOString(),
       storeProfile: parsed.storeProfile,
       inventory: parsed.inventory,
@@ -394,12 +477,17 @@ export async function exportDatabaseBackup(): Promise<string> {
   const storeProfile = getStoreProfile();
 
   // Filter out any legacy 'NOTE' transactions from the financial transactions list in backup
-  const financialTransactions = transactions.filter((t) => t.type !== ('NOTE' as any));
+  const financialTransactions = transactions
+    .filter((t) => t.type !== ('NOTE' as any))
+    .map((t) => ({
+      ...t,
+      dateStr: t.dateStr || getLocalDateStr(t.timestamp),
+    }));
 
   const backupData: TindahanBackupData = {
-    app: 'Tindahan Notes',
+    app: 'Tinda',
     backupVersion: 1,
-    appVersion: '2.0.0',
+    appVersion: '1.0.0',
     createdAt: new Date().toISOString(),
     storeProfile,
     transactions: financialTransactions,
@@ -439,7 +527,12 @@ export async function importDatabaseBackup(jsonString: string): Promise<{
 
   // Separate any legacy NOTE records from transactions if old backup
   const legacyNotesInTx = transactions.filter((t: any) => t.type === 'NOTE');
-  const pureTransactions = transactions.filter((t: any) => t.type !== 'NOTE');
+  const pureTransactions = transactions
+    .filter((t: any) => t.type !== 'NOTE')
+    .map((t: any) => ({
+      ...t,
+      dateStr: t.dateStr || getLocalDateStr(t.timestamp || Date.now()),
+    }));
 
   // Combine notes and legacy notes
   const allNotes: Note[] = [...notes];
@@ -462,15 +555,41 @@ export async function importDatabaseBackup(jsonString: string): Promise<{
     return true;
   });
 
+  // Deduplicate and normalize inventory records by unique name to prevent ConstraintError
+  const deduplicatedInventoryMap = new Map<string, InventoryItem>();
+  for (const item of inventory) {
+    const key = (item.name || '').trim().toLowerCase();
+    if (key) {
+      deduplicatedInventoryMap.set(key, {
+        ...item,
+        name: item.name.trim(),
+      });
+    }
+  }
+  const cleanInventory = Array.from(deduplicatedInventoryMap.values());
+
+  // Deduplicate and normalize customer records by unique name to prevent ConstraintError
+  const deduplicatedCustomersMap = new Map<string, Customer>();
+  for (const cust of customers) {
+    const key = (cust.name || '').trim().toLowerCase();
+    if (key) {
+      deduplicatedCustomersMap.set(key, {
+        ...cust,
+        name: cust.name.trim(),
+      });
+    }
+  }
+  const cleanCustomers = Array.from(deduplicatedCustomersMap.values());
+
   // Atomic database restoration inside a single read-write transaction
   await db.transaction('rw', [db.inventory, db.customers, db.transactions, db.notes], async () => {
     await db.inventory.clear();
-    if (inventory.length > 0) {
-      await db.inventory.bulkPut(inventory);
+    if (cleanInventory.length > 0) {
+      await db.inventory.bulkPut(cleanInventory);
     }
     await db.customers.clear();
-    if (customers.length > 0) {
-      await db.customers.bulkPut(customers);
+    if (cleanCustomers.length > 0) {
+      await db.customers.bulkPut(cleanCustomers);
     }
     await db.transactions.clear();
     if (pureTransactions.length > 0) {
@@ -496,8 +615,8 @@ export async function importDatabaseBackup(jsonString: string): Promise<{
 
   return {
     txCount: pureTransactions.length,
-    customerCount: customers.length,
-    inventoryCount: inventory.length,
+    customerCount: cleanCustomers.length,
+    inventoryCount: cleanInventory.length,
     notesCount: validNotes.length,
     storeProfileRestored,
   };

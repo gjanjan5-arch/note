@@ -1,0 +1,368 @@
+TINDA — AI STUDIO INSPECTOR, VERIFICATION & IMPLEMENTATION RULES
+
+The current project source code is the ONLY source of truth.
+
+Do not guess, assume, invent, or rely on previous AI responses when the information can be verified from the current project.
+
+1. INSPECT BEFORE DOING ANYTHING
+
+Before making any change:
+
+1. Inspect the current project structure.
+2. Locate the exact files relevant to the request.
+3. Read the existing implementation before modifying it.
+4. Trace relevant imports, components, functions, state, storage, APIs, dependencies, and platform-specific code when necessary.
+5. Determine what already exists.
+6. Determine exactly where the requested change belongs.
+7. Report what you actually found.
+
+Do not modify code before the relevant implementation has been inspected.
+
+The existing source code takes priority over assumptions, memory, previous AI-generated code, or what a typical project would normally contain.
+
+2. ANTI-HALLUCINATION RULE
+
+Never present an assumption as a fact.
+
+If something cannot be verified from the current source code, configuration, project files, documentation available in the project, or an actually executed test, write:
+
+UNVERIFIED — NOT CONFIRMED FROM THE CURRENT PROJECT.
+
+Do not invent:
+
+- files
+- functions
+- components
+- variables
+- APIs
+- dependencies
+- database structures
+- platform capabilities
+- existing features
+- test results
+- error results
+- implementation details
+
+If information is missing, say that it is missing.
+
+Never fill an information gap with a guess.
+
+3. SOURCE VERIFICATION
+
+When describing existing code, base the description on the actual code.
+
+Before saying something like:
+
+- "The app uses X"
+- "This function does Y"
+- "This component handles Z"
+- "The database contains X"
+- "Android already supports X"
+
+locate and verify the relevant implementation first.
+
+If you cannot locate it, mark it UNVERIFIED.
+
+4. CURRENT PLAN IS THE BOUNDARY
+
+Do not change anything that is not part of the current plan.
+
+Do not:
+
+- refactor unrelated code
+- redesign unrelated UI
+- rename unrelated files
+- replace working implementations unnecessarily
+- update dependencies without a demonstrated requirement
+- clean up unrelated code
+- add unrequested features
+- change architecture without approval
+
+If an additional change is genuinely required, report it first as a required dependency/blocker instead of silently adding it.
+
+5. PRESERVE EXISTING FUNCTIONALITY
+
+Preserve all currently working functionality unless the plan explicitly changes it.
+
+Preserve:
+
+- current UI/UX
+- current navigation
+- current layouts
+- current active language
+- existing translations
+- current data
+- existing storage/database behavior
+- Android functionality
+- Windows functionality
+- existing integrations
+
+Do not replace working functionality with examples, placeholders, mock implementations, or simplified versions.
+
+6. UI/UX
+
+Preserve the current UI/UX.
+
+Analyze and adapt the implementation for different screen sizes:
+
+- small phones
+- large phones
+- tablets
+- desktop windows
+
+Do not fix one screen size by breaking another.
+
+Do not introduce unnecessary visual changes.
+
+MODAL INTERACTION RULE (apply to ALL existing and new modals):
+- Every modal, bottom sheet, and overlay MUST have a full-screen backdrop div behind it
+- Backdrop must have: pointer-events-auto, fixed inset-0, appropriate z-index BELOW the modal but ABOVE all other content
+- No element outside the modal should be tappable/clickable while any modal is open
+- Backdrop tap = close modal (where applicable)
+- This rule applies to ALL existing modals in the app and any new ones created in the future
+
+7. PERFORMANCE
+
+Prioritize:
+
+1. Lowest practical battery consumption
+2. Minimal RAM usage
+3. Minimal CPU usage
+4. Fast startup
+5. Fast interaction
+6. Minimal unnecessary background work
+
+Avoid unnecessary:
+
+- polling
+- timers
+- event listeners
+- re-renders
+- network requests
+- data processing
+- animations
+- large dependencies
+
+Reuse existing lightweight solutions when appropriate.
+
+Do not sacrifice correctness for performance.
+
+8. ANIMATION
+
+If animation is necessary, use simple opacity fade only.
+
+Do not add:
+
+- pulse
+- bounce
+- heavy transitions
+- excessive scaling
+- parallax
+- continuous animation
+- unnecessary visual effects
+
+Prefer no animation when it provides no functional benefit.
+
+9. MINIMAL MODIFICATION
+
+Make the smallest safe change required to complete the plan.
+
+Only modify files that actually need modification.
+
+Do not modify a file merely because it is related to the feature.
+
+Before editing a file, verify that the file is relevant.
+
+10. PLATFORM DIFFERENCES
+
+Tinda supports different environments.
+
+Treat these separately:
+
+- Android / Capacitor
+- Windows / Electron
+- Web/browser
+
+Never assume that a feature working on one platform works on another.
+
+Verify platform-specific APIs and plugins before using them.
+
+For example, do not assume an Android Capacitor plugin will work inside Electron.
+
+11. AFTER IMPLEMENTATION
+
+After generating changes:
+
+1. Re-read every modified file.
+2. Verify imports and references.
+3. Check for broken references.
+4. Check that existing functionality was preserved.
+5. Run the appropriate lint/type-check.
+6. Run the appropriate build.
+7. Test the affected functionality.
+8. Test important related functionality.
+9. Check runtime/console errors where applicable.
+
+A successful build does NOT prove that the feature works.
+
+Compilation and functional testing are separate verification steps.
+
+12. NEVER FABRICATE TEST RESULTS
+
+Only report tests that were actually executed.
+
+Never say:
+
+- "tested successfully"
+- "working"
+- "no errors"
+- "fixed"
+
+unless the corresponding verification was actually performed.
+
+If something was not tested, write:
+
+NOT TESTED.
+
+If something could not be verified, write:
+
+UNVERIFIED.
+
+13. IMPLEMENTATION REPORT
+
+After every modification, provide this report:
+
+Files Modified
+
+List every file actually modified.
+
+Changes Made
+
+Briefly describe what was changed.
+
+Verification Performed
+
+List the commands, checks, and functional tests actually performed.
+
+Errors
+
+List every error found.
+
+Bugs
+
+List every bug found.
+
+Warnings
+
+List every warning found.
+
+Failed Tests
+
+List every failed test.
+
+Regressions
+
+List every regression found.
+
+Unexpected Behavior
+
+List every unexpected behavior found.
+
+Unverified Items
+
+List anything that could not be verified.
+
+If none were found, explicitly state:
+
+No errors, bugs, warnings, failed tests, regressions, or unexpected behavior detected.
+
+Do not omit this section.
+
+14. BEFORE FINAL RESPONSE
+
+Perform a final verification check:
+
+- Did I modify only files required by the plan?
+- Did I preserve the current UI/UX?
+- Did I preserve the active language?
+- Did I preserve existing functionality?
+- Did I verify assumptions against the actual source?
+- Did I run the required lint/type-check?
+- Did I run the required build?
+- Did I actually test the affected functionality?
+- Did I distinguish tested behavior from untested behavior?
+- Did I report all errors, bugs, warnings, failed tests, regressions, and unexpected behavior?
+- Did I introduce any unrelated changes?
+
+If any item cannot be verified, report it as UNVERIFIED.
+
+15. IMPORTANT RULE
+
+When uncertain:
+
+DO NOT GUESS. INSPECT. VERIFY. TEST. REPORT.
+
+The current project is the source of truth.
+
+The plan is the change boundary.
+
+Unverified information must never be presented as fact.src/types.ts
+```
+
+### 2. Database / Storage
+```
+src/db/db.ts
+```
+
+### 3. Main Components
+```
+src/components/InventoryManager.tsx
+src/components/TransactionLedger.tsx
+src/components/PautangLedger.tsx
+src/components/StoreAnalytics.tsx
+src/components/SettingsModal.tsx
+src/components/SukiChatbot.tsx
+```
+
+### 4. Utility Files
+```
+src/utils/formatters.ts
+src/utils/i18n.ts
+```
+
+### 5. App Entry & Routing
+```
+src/App.tsx
+src/main.tsx
+```
+
+### 6. Capacitor Config
+```
+capacitor.config.ts
+```
+
+### 7. Package.json
+```
+package.json
+```
+
+### 8. Any Other Important Files
+```
+Any hooks, contexts, or other components I missed
+```
+
+## OUTPUT FORMAT
+
+For each file, output like this:
+
+--- FILE: src/types.ts ---
+```typescript
+[FULL FILE CONTENTS HERE]
+```
+
+--- FILE: src/components/InventoryManager.tsx ---
+```typescript
+[FULL FILE CONTENTS HERE]
+```
+
+Continue for ALL files. Do not skip any. Do not summarize. I need the complete code.

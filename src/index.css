@@ -1,41 +1,72 @@
 @import "tailwindcss";
 
+/* Touch & Mobile Responsiveness Optimizations */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+[role="button"],
+a,
+input,
+select,
+textarea {
+  touch-action: manipulation;
+}
+
+.touch-action-manipulation {
+  touch-action: manipulation;
+}
+
+.hardware-accelerated {
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  will-change: transform, opacity;
+}
+
 :root {
-  --color-primary: #2563eb;
+  --color-primary: #065f46;
   --color-primary-foreground: #ffffff;
-  --color-primary-hover: #1d4ed8;
-  --color-primary-bg: #1e3a8a;
+  --color-primary-hover: #047857;
+  --color-primary-bg: #d1fae5;
   --color-primary-fg: #ffffff;
-  --color-accent: #60a5fa;
-  --color-accent-hover: #93c5fd;
-  --color-accent-text: #93c5fd;
-  --color-background: #0b1329;
-  --color-surface: #111d3d;
-  --color-surface-elevated: #16254c;
-  --color-surface-card: #16254c;
-  --color-surface-hover: #1d3061;
-  --color-surface-header: #070e20;
-  --color-surface-nav: #070e20;
-  --color-surface-subtle: #182952;
-  --color-text: #f8fafc;
-  --color-text-secondary: #94a3b8;
-  --color-text-muted: #64748b;
-  --color-border: #233876;
-  --color-border-subtle: #192a59;
-  --color-card-border: #233876;
-  --color-input: #0d1733;
-  --color-input-bg: #0d1733;
-  --color-input-border: #2a438c;
-  --color-hover: #1d3061;
-  --color-selected: #1e3a8a;
-  --color-badge-bg: #1e3a8a;
-  --color-badge-text: #93c5fd;
+  --color-accent: #059669;
+  --color-accent-hover: #047857;
+  --color-accent-text: #065f46;
+  --color-background: #f1f7f4;
+  --color-surface: #ffffff;
+  --color-surface-elevated: #ffffff;
+  --color-surface-card: #ffffff;
+  --color-surface-hover: #f8fafc;
+  --color-surface-header: #064e3b;
+  --color-surface-nav: #ffffff;
+  --color-surface-subtle: #ecfdf5;
+  --color-text: #06281e;
+  --color-text-secondary: #334155;
+  --color-text-muted: #94a3b8;
+  --color-border: #cbd5e1;
+  --color-border-subtle: #e2e8f0;
+  --color-card-border: #e2e8f0;
+  --color-input: #f8fafc;
+  --color-input-bg: #f8fafc;
+  --color-input-border: #cbd5e1;
+  --color-hover: #f8fafc;
+  --color-selected: #d1fae5;
+  --color-badge-bg: #d1fae5;
+  --color-badge-text: #065f46;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  height: 100%;
 }
 
 body {
   background-color: var(--color-background);
   color: var(--color-text);
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
@@ -116,3 +147,220 @@ body {
 .theme-selected {
   background-color: var(--color-selected);
 }
+
+/* Safe Area Insets for Mobile Notification Bar & Gesture Navigation */
+.safe-pt-header {
+  padding-top: max(1.25rem, calc(env(safe-area-inset-top, 0px) + 0.75rem));
+}
+
+.safe-pb-nav {
+  padding-bottom: max(0.375rem, env(safe-area-inset-bottom, 0px));
+}
+
+.safe-mb-fab {
+  bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
+}
+
+.safe-pt-modal {
+  padding-top: max(0.75rem, env(safe-area-inset-top, 0px));
+}
+
+.safe-pb-modal {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+}
+
+/* Fluid Responsive Auto-Fit Grids (Adapts dynamically to Ctrl +, Ctrl -, and mouse zoom) */
+.fluid-grid-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 130px), 1fr));
+  gap: 0.625rem;
+}
+
+@media (min-width: 768px) {
+  .fluid-grid-tiles {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr));
+    gap: 0.75rem;
+  }
+}
+
+.fluid-grid-products {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 140px), 1fr));
+  gap: 0.625rem;
+}
+
+.fluid-grid-customers {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 145px), 1fr));
+  gap: 0.625rem;
+}
+
+@media (min-width: 640px) {
+  .fluid-grid-products {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr));
+    gap: 0.75rem;
+  }
+
+  .fluid-grid-customers {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr));
+    gap: 0.75rem;
+  }
+}
+
+@media (min-width: 1280px) {
+  .fluid-grid-products {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 180px), 1fr));
+    gap: 1rem;
+  }
+
+  .fluid-grid-customers {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr));
+    gap: 1rem;
+  }
+}
+
+/* Universal Modal Scroll Container (Protects Split-Screen, Floating Windows & Keyboard Mode) */
+.modal-scroll-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0.5rem;
+  background-color: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+@media (min-width: 640px) {
+  .modal-scroll-backdrop {
+    justify-content: center;
+    padding: 1rem;
+  }
+}
+
+/* Modal Inner Card (Expands naturally without being clipped off-screen) */
+.modal-scroll-card {
+  margin-top: auto;
+  margin-bottom: auto;
+  width: 100%;
+  max-height: none;
+}
+
+@media (min-height: 600px) and (min-width: 640px) {
+  .modal-scroll-card {
+    max-height: calc(100dvh - 3rem);
+  }
+}
+
+/* Split-screen and low-height screen compact rules */
+@media (max-height: 520px) {
+  .safe-pt-header {
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.5rem !important;
+  }
+  .modal-scroll-backdrop {
+    padding: 0.25rem !important;
+    justify-content: flex-start !important;
+  }
+}
+
+/* Visible Scrollbar Hint for Scrollable Modals */
+.custom-scrollbar,
+.custom-modal-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.45) transparent;
+}
+.custom-scrollbar::-webkit-scrollbar,
+.custom-modal-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track,
+.custom-modal-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb,
+.custom-modal-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.45);
+  border-radius: 9999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover,
+.custom-modal-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(148, 163, 184, 0.75);
+}
+
+/* Completely hidden scrollbars but keep functionality */
+.no-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none; /* Chrome, Safari and Opera */
+}
+
+/* Inputs */
+input, textarea, select {
+  scroll-margin-bottom: 100px;
+}
+
+/* ... existing content ... */
+/* Power & Battery Conservation: GPU layer optimization and reduced motion support */
+.gpu-layer {
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+}
+
+/* Scanner WebView Transparency: Prevents dark #062016 background from hiding native/overlay camera feed */
+body.scanner-transparent-active,
+html.scanner-transparent-active {
+  background-color: transparent !important;
+  background: transparent !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* BLE Status Opacity Breathing Animation (2s cycle, CSS-only for battery conservation) */
+@keyframes ble-breathe {
+  0%, 100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.animate-ble-breathe {
+  animation: ble-breathe 2s ease-in-out infinite;
+}
+
+/* Slim scrollbar for modals and scroll containers */
+.slim-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.4) transparent;
+}
+.slim-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+.slim-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.slim-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.4);
+  border-radius: 9999px;
+}
+
+
+

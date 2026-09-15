@@ -1,7 +1,0 @@
-com.tindahanNotes.app.test.app-tracing-1.2.0-0 C:\Users\Aspire 5\.gradle\caches\8.13\transforms\48d89b16ed84f7aa87f4010b1381ca63\transformed\tracing-1.2.0\res
-com.tindahanNotes.app.test.app-core-1.7.0-1 C:\Users\Aspire 5\.gradle\caches\8.13\transforms\76d4db31123a1972b541df62af5d8fbd\transformed\core-1.7.0\res
-com.tindahanNotes.app.test.app-androidTest-2 C:\Users\Aspire 5\OneDrive\Desktop\tindahan-notes\android\app\build\generated\res\resValues\androidTest\debug
-com.tindahanNotes.app.test.app-updated_navigation_xml-3 C:\Users\Aspire 5\OneDrive\Desktop\tindahan-notes\android\app\build\generated\updated_navigation_xml\debugAndroidTest
-com.tindahanNotes.app.test.app-mergeDebugAndroidTestResources-4 C:\Users\Aspire 5\OneDrive\Desktop\tindahan-notes\android\app\build\intermediates\incremental\debugAndroidTest\mergeDebugAndroidTestResources\merged.dir
-com.tindahanNotes.app.test.app-mergeDebugAndroidTestResources-5 C:\Users\Aspire 5\OneDrive\Desktop\tindahan-notes\android\app\build\intermediates\incremental\debugAndroidTest\mergeDebugAndroidTestResources\stripped.dir
-com.tindahanNotes.app.test.app-debugAndroidTest-6 C:\Users\Aspire 5\OneDrive\Desktop\tindahan-notes\android\app\build\intermediates\merged_res\debugAndroidTest\mergeDebugAndroidTestResources

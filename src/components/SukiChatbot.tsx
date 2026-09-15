@@ -8,23 +8,35 @@ interface SukiChatbotProps {
   lang: LanguageCode;
 }
 
-const PRESET_QUESTIONS = [
+const PRESET_QUESTIONS_TL = [
   'Paano maiwasan ang malaking pautang nang hindi nakakasira sa suki?',
   'Magkano ang tamang patong / tubo sa Pancit Canton at Softdrinks?',
   'Anong paninda ang mabilis mabenta ngayong tag-init?',
   'Paano ma-compute nang tama ang puhunan at daily profit?',
 ];
 
+const PRESET_QUESTIONS_EN = [
+  'How to prevent excessive store credit without alienating regular customers?',
+  'What is the standard profit margin for instant noodles and beverages?',
+  'Which products sell fastest during summer season?',
+  'How do I calculate cost price and daily profit accurately?',
+];
+
 export const SukiChatbot: React.FC<SukiChatbotProps> = ({ isOnline, lang }) => {
+  const initialGreeting = lang === 'tl'
+    ? 'Magandang araw Boss! Ako si Suki, ang iyong AI Business Advisor para sa Tinda. Ano ang maitutulong ko sa iyong sari-sari store ngayon? Pwede mo akong tanungin tungkol sa pautang, patong sa presyo, o paninda tips!'
+    : 'Hello Boss! I am Suki, your AI Store Advisor. How can I assist your sari-sari store business today? Feel free to ask about credit terms, pricing markups, or inventory management!';
+
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: '1',
       role: 'model',
-      content:
-        'Magandang araw Boss! Ako si Suki, ang iyong AI Business Advisor para sa Tindahan Notes. Ano ang maitutulong ko sa iyong sari-sari store ngayon? Pwede mo akong tanungin tungkol sa pautang, patong sa presyo, o paninda tips!',
+      content: initialGreeting,
       timestamp: Date.now(),
     },
   ]);
+
+  const presetQuestions = lang === 'tl' ? PRESET_QUESTIONS_TL : PRESET_QUESTIONS_EN;
 
   const [input, setInput] = useState('');
   const [selectedModel, setSelectedModel] = useState<string>('gemini-3.7-flash');
@@ -83,13 +95,16 @@ export const SukiChatbot: React.FC<SukiChatbotProps> = ({ isOnline, lang }) => {
       });
 
       if (res.ok) {
-        const data = await res.json();
+        const data = await res.json().catch(() => null);
+        const fallbackText = lang === 'tl'
+          ? 'Pasensya na boss, subukang magtanong muli.'
+          : 'Sorry, please try asking your question again.';
         const modelMsg: ChatMessage = {
           id: (Date.now() + 1).toString(),
           role: 'model',
-          content: data.text || 'Pasensya na boss, subukang magtanong muli.',
+          content: data?.text || fallbackText,
           timestamp: Date.now(),
-          modelUsed: data.modelUsed || selectedModel,
+          modelUsed: data?.modelUsed || selectedModel,
         };
         setMessages((prev) => [...prev, modelMsg]);
       } else {
@@ -98,12 +113,19 @@ export const SukiChatbot: React.FC<SukiChatbotProps> = ({ isOnline, lang }) => {
       }
     } catch (err: any) {
       console.error('Chat error:', err);
+      const isHighDemand = err?.message?.includes('high demand') || err?.message?.includes('503');
+      const errorContent = isHighDemand
+        ? (lang === 'tl'
+            ? 'Medyo mataas ang demand ngayon sa AI server. Paki-pindot muli ang tanong para subukan agad.'
+            : 'The AI server is experiencing high demand right now. Please tap the question again to retry.')
+        : (lang === 'tl'
+            ? 'Nagka-error sa pagsagot ni Suki. Paki-check ang iyong internet connection at subukang muli.'
+            : 'Error getting response. Please check your internet connection and try again.');
+
       const errorMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'model',
-        content: err?.message?.includes('high demand') || err?.message?.includes('503')
-          ? 'Medyo mataas ang demand ngayon sa AI server. Paki-pindot muli ang tanong para subukan agad.'
-          : 'Nagka-error sa pagsagot ni Suki. Paki-check ang iyong internet connection at subukang muli.',
+        content: errorContent,
         timestamp: Date.now(),
       };
       setMessages((prev) => [...prev, errorMsg]);
@@ -113,17 +135,19 @@ export const SukiChatbot: React.FC<SukiChatbotProps> = ({ isOnline, lang }) => {
   };
 
   return (
-    <div className="theme-card rounded-3xl shadow-2xs border h-[580px] sm:h-[650px] flex flex-col overflow-hidden transition-colors duration-200">
+    <div id="suki-ai-container" className="theme-card rounded-3xl shadow-2xs border h-[580px] sm:h-[650px] flex flex-col overflow-hidden transition-colors duration-200">
       {/* Top Header */}
-      <div className="theme-bg-header text-white p-3.5 sm:p-4 flex items-center justify-between border-b theme-border-subtle">
+      <div id="suki-ai-header" className="theme-bg-header text-white p-3.5 sm:p-4 flex items-center justify-between border-b theme-border-subtle">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-xl theme-bg-primary text-white flex items-center justify-center font-bold shadow-2xs border border-white/20">
             <Bot className="w-5 h-5" />
           </div>
-          <div>
-            <h3 className="font-black text-sm text-white">Suki AI Store Advisor</h3>
-            <p className="text-[10px] theme-text-accent font-medium">Taglish Business Assistant for Sari-Sari Stores</p>
-          </div>
+        <div>
+          <h3 className="font-black text-sm text-white">Suki AI Store Advisor</h3>
+          <p className="text-[10px] theme-text-accent font-medium">
+            {lang === 'tl' ? 'Business Assistant para sa Sari-Sari Store' : 'AI Business Assistant for Retail Stores'}
+          </p>
+        </div>
         </div>
 
         {/* Model Selector Dropdown */}
@@ -176,7 +200,7 @@ export const SukiChatbot: React.FC<SukiChatbotProps> = ({ isOnline, lang }) => {
         {isLoading && (
           <div className="flex items-center gap-2 text-xs font-bold theme-text-accent p-2.5 theme-bg-surface-subtle rounded-2xl w-fit border theme-border-subtle">
             <RefreshCw className="w-3.5 h-3.5 animate-spin theme-text-primary" />
-            <span>Nagiisip si Suki...</span>
+            <span>{lang === 'tl' ? 'Nagiisip si Suki...' : 'Suki is thinking...'}</span>
           </div>
         )}
 
@@ -185,8 +209,8 @@ export const SukiChatbot: React.FC<SukiChatbotProps> = ({ isOnline, lang }) => {
 
       {/* Preset Questions Bar */}
       <div className="p-2 theme-bg-surface-subtle border-t theme-border-subtle flex gap-1.5 overflow-x-auto text-[11px] font-medium no-scrollbar">
-        <span className="theme-text-secondary font-bold shrink-0 self-center px-1">Tanungin:</span>
-        {PRESET_QUESTIONS.map((q, i) => (
+        <span className="theme-text-secondary font-bold shrink-0 self-center px-1">{lang === 'tl' ? 'Tanungin:' : 'Ask:'}</span>
+        {presetQuestions.map((q, i) => (
           <button
             key={i}
             onClick={() => handleSendMessage(q)}
@@ -210,7 +234,7 @@ export const SukiChatbot: React.FC<SukiChatbotProps> = ({ isOnline, lang }) => {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Itanong kay Suki... (e.g. Magkano ibebenta ang Rebisco?)"
+            placeholder={lang === 'tl' ? 'Itanong kay Suki... (e.g. Magkano ibebenta ang Rebisco?)' : 'Ask Suki... (e.g. Recommended price for biscuits?)'}
             className="flex-1 theme-input border rounded-2xl py-2.5 px-3.5 text-xs sm:text-sm theme-text-app focus:outline-none font-medium"
           />
 
