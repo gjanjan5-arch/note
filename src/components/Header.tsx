@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { PanelLeft, Store, Search } from 'lucide-react';
+import { Store, Search } from 'lucide-react';
+import { BurgerIcon } from './BurgerIcon';
 import { translate, type LanguageCode } from '../utils/i18n';
 import type { StoreProfile } from '../utils/storeSettings';
 import { safeStorage } from '../utils/safeStorage';
@@ -13,6 +14,8 @@ interface HeaderProps {
   onOpenMenu: () => void;
   onOpenSearch?: () => void;
   appMode?: 'seller' | 'buyer';
+  isNavVisible?: boolean;
+  isMenuOpen?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -21,6 +24,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenMenu,
   onOpenSearch,
   appMode = 'seller',
+  isNavVisible = true,
+  isMenuOpen = false,
 }) => {
   const [showTooltip, setShowTooltip] = useState(false);
 
@@ -52,14 +57,22 @@ export const Header: React.FC<HeaderProps> = ({
     };
   }, [showTooltip]);
 
+  const [isToggling, setIsToggling] = useState(false);
+
   const handleMenuClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (isToggling) return;
+    setIsToggling(true);
+    setTimeout(() => {
+      setIsToggling(false);
+    }, 300);
+
     if (showTooltip) setShowTooltip(false);
     onOpenMenu();
   };
 
   return (
-    <header className="theme-bg-header text-white shadow-xs border-b theme-border-subtle sticky top-0 z-30 transition-colors duration-200 w-full">
+    <header className={`theme-bg-header text-white shadow-xs border-b theme-border-subtle sticky top-0 z-30 transition-transform duration-300 ease-in-out w-full ${isNavVisible ? 'translate-y-0 pointer-events-auto' : '-translate-y-full pointer-events-none'}`}>
       <div className="max-w-5xl mx-auto px-3 sm:px-4 safe-pt-header pb-2.5 flex items-center justify-between gap-2 sm:gap-3">
         {/* Left: Menu Drawer Toggle Button with Custom Geometric Icon & Speech Bubble */}
         <div className="relative flex items-center">
@@ -69,12 +82,14 @@ export const Header: React.FC<HeaderProps> = ({
             role="button"
             tabIndex={0}
             style={{ touchAction: 'manipulation' }}
+            disabled={isToggling}
             onClick={handleMenuClick}
-            className="p-2 bg-white/10 hover:bg-white/20 active:bg-white/25 text-white rounded-2xl transition-all border border-white/15 active:scale-95 cursor-pointer flex items-center justify-center shadow-2xs"
+            className={`p-2 bg-white/10 hover:bg-white/20 active:bg-white/25 text-white rounded-2xl transition-all border border-white/15 active:scale-95 cursor-pointer flex items-center justify-center shadow-2xs ${isToggling ? 'pointer-events-none' : ''}`}
             aria-label="Open Navigation Menu"
+            aria-expanded={isMenuOpen}
             title="Menu"
           >
-            <PanelLeft className="w-5 h-5 stroke-[2.2] text-white" />
+            <BurgerIcon isOpen={isMenuOpen} size={20} color="white" />
           </button>
 
           {/* Lightweight Floating Speech Bubble (Inherits active theme colors) */}
@@ -109,7 +124,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="w-8 h-8 rounded-xl theme-bg-primary text-white flex items-center justify-center font-black shadow-inner shrink-0 border border-white/20">
             <Store className="w-4 h-4 stroke-[2.5]" />
           </div>
-          <div className="min-w-0 max-w-[200px] sm:max-w-sm">
+          <div className="min-w-0 max-w-[240px] sm:max-w-sm">
             <h1 className="text-sm sm:text-base font-black tracking-tight text-white leading-tight truncate">
               {translate(lang, 'app_title') || 'Tinda'}
             </h1>
@@ -119,8 +134,8 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Right: Global Search Button with responsive touch target & label for older users */}
-        <div className="flex items-center">
+        {/* Right: Global Search Button */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
           <button
             id="header-global-search-btn"
             type="button"

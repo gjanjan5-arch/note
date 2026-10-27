@@ -4,7 +4,6 @@ android {
     namespace = "com.tindahanNotes.app"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        setProperty("archivesBaseName", "Tindahan-Notes")
         applicationId "com.tindahanNotes.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion

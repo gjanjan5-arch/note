@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 /* Touch & Mobile Responsiveness Optimizations */
 * {
@@ -54,13 +55,49 @@ textarea {
   --color-selected: #d1fae5;
   --color-badge-bg: #d1fae5;
   --color-badge-text: #065f46;
+
+  /* Centralized Hardware Safe Area Tokens & Inset Engine */
+  --safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --safe-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+  --safe-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+
+  /* Centralized Layout Spacing Rules - Bulletproof clearance for Android 3-button system bars (48dp-56dp) & gesture bars */
+  --safe-header-pt: max(1.5rem, calc(var(--safe-top) + 0.75rem));
+  --safe-nav-pb: max(3.5rem, calc(var(--safe-bottom) + 0.875rem));
+  --safe-fab-bottom: max(4.75rem, calc(var(--safe-bottom) + 1.5rem));
+  --safe-screen-pb: max(4.25rem, calc(var(--safe-bottom) + 1.25rem));
+
+  /* Floating Dock & Derived FAB Layout Tokens */
+  --dock-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+  --dock-h: 4.125rem;
+  --fab-gap: 0.75rem;
+  --fab-bottom: calc(var(--dock-bottom) + var(--dock-h) + var(--fab-gap));
+}
+
+/* Desktop & Laptop displays without mobile system bars */
+@media (min-width: 768px) {
+  :root {
+    --safe-nav-pb: max(1.25rem, calc(var(--safe-bottom) + 0.5rem));
+    --safe-fab-bottom: max(2.25rem, calc(var(--safe-bottom) + 1.25rem));
+    --safe-screen-pb: max(2rem, calc(var(--safe-bottom) + 1rem));
+  }
+}
+
+/* Standalone / APK Mobile Display Mode Adjustments (3-button navigation & hardware status bar clearance) */
+@media (display-mode: standalone) {
+  :root {
+    --safe-header-pt: max(2.25rem, calc(var(--safe-top) + 0.75rem));
+    --safe-nav-pb: max(3.75rem, calc(var(--safe-bottom) + 1rem));
+    --safe-fab-bottom: max(5rem, calc(var(--safe-bottom) + 1.75rem));
+    --safe-screen-pb: max(4.5rem, calc(var(--safe-bottom) + 1.5rem));
+  }
 }
 
 html,
 body,
 #root {
   min-height: 100%;
-  height: 100%;
 }
 
 body {
@@ -148,25 +185,56 @@ body {
   background-color: var(--color-selected);
 }
 
-/* Safe Area Insets for Mobile Notification Bar & Gesture Navigation */
+/* Centralized Safe Area Utility Classes (Consistent across all devices, screens & APKs) */
 .safe-pt-header {
-  padding-top: max(1.25rem, calc(env(safe-area-inset-top, 0px) + 0.75rem));
+  padding-top: var(--safe-header-pt) !important;
 }
 
 .safe-pb-nav {
-  padding-bottom: max(0.375rem, env(safe-area-inset-bottom, 0px));
+  padding-bottom: max(var(--safe-area-inset-bottom, 0px), var(--safe-nav-pb)) !important;
 }
 
-.safe-mb-fab {
-  bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
+.safe-bottom-fab {
+  bottom: max(var(--safe-area-inset-bottom, 0px), var(--safe-fab-bottom)) !important;
+}
+
+.safe-pb-screen {
+  padding-bottom: var(--safe-screen-pb);
 }
 
 .safe-pt-modal {
-  padding-top: max(0.75rem, env(safe-area-inset-top, 0px));
+  padding-top: max(1rem, var(--safe-top));
 }
 
 .safe-pb-modal {
-  padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+  padding-bottom: var(--safe-nav-pb);
+}
+
+.safe-mb-fab {
+  bottom: var(--fab-bottom);
+}
+
+/* Compact Dock Variant - strictly for narrow mobile displays (<= 380px) */
+@media (max-width: 380px) {
+  .dock-container {
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+  }
+  .dock-nav {
+    gap: 0.25rem !important; /* gap-1 so five labels fit */
+  }
+  .dock-tab-btn {
+    min-height: 48px !important;
+    min-width: 48px !important;
+    padding-left: 0.25rem !important;
+    padding-right: 0.25rem !important;
+  }
+  .dock-tab-label {
+    font-size: 10px !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: nowrap !important;
+  }
 }
 
 /* Fluid Responsive Auto-Fit Grids (Adapts dynamically to Ctrl +, Ctrl -, and mouse zoom) */
@@ -270,35 +338,35 @@ body {
   }
 }
 
-/* Visible Scrollbar Hint for Scrollable Modals */
+/* Slim scrollbar for modals and scroll containers - Unified and Stable */
+.slim-scrollbar,
 .custom-scrollbar,
-.custom-modal-scrollbar {
+.custom-modal-scrollbar,
+.scrollbar-thin {
   scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.45) transparent;
-}
-.custom-scrollbar::-webkit-scrollbar,
-.custom-modal-scrollbar::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-.custom-scrollbar::-webkit-scrollbar-track,
-.custom-modal-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb,
-.custom-modal-scrollbar::-webkit-scrollbar-thumb {
-  background-color: rgba(148, 163, 184, 0.45);
-  border-radius: 9999px;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb:hover,
-.custom-modal-scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(148, 163, 184, 0.75);
+  scrollbar-color: rgba(148, 163, 184, 0.4) transparent;
+  scrollbar-gutter: stable;
 }
 
-/* Completely hidden scrollbars but keep functionality */
+.slim-scrollbar::-webkit-scrollbar,
+.custom-scrollbar::-webkit-scrollbar,
+.custom-modal-scrollbar::-webkit-scrollbar,
+.scrollbar-thin::-webkit-scrollbar {
+  width: 5px;
+}
+
+.slim-scrollbar::-webkit-scrollbar-track,
+.custom-scrollbar::-webkit-scrollbar-track,
+.custom-modal-scrollbar::-webkit-scrollbar-track,
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Completely hidden scrollbars but keep functionality (for horizontal scrollers) */
 .no-scrollbar {
   -ms-overflow-style: none;  /* IE and Edge */
   scrollbar-width: none;  /* Firefox */
+  scrollbar-gutter: stable;
 }
 .no-scrollbar::-webkit-scrollbar {
   display: none; /* Chrome, Safari and Opera */
@@ -346,21 +414,41 @@ html.scanner-transparent-active {
   animation: ble-breathe 2s ease-in-out infinite;
 }
 
-/* Slim scrollbar for modals and scroll containers */
-.slim-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.4) transparent;
+/* Performance Mode: Eco Mode Battery & Low-RAM Optimizations */
+[data-perf-mode="eco"] .animate-pulse,
+[data-perf-mode="eco"] .animate-bounce,
+[data-perf-mode="eco"] .animate-ping,
+[data-perf-mode="eco"] .animate-spin-slow {
+  animation: none !important;
 }
-.slim-scrollbar::-webkit-scrollbar {
-  width: 5px;
+
+[data-perf-mode="eco"] {
+  text-rendering: optimizeSpeed;
 }
-.slim-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
+
+/* Graphical & Animation Control Levels (Auto / Eco / Full) */
+[data-animation-level="none"] *:not([data-drawer-element]):not([data-drawer-element] *),
+[data-animation-level="none"] *:not([data-drawer-element]):not([data-drawer-element] *)::before,
+[data-animation-level="none"] *:not([data-drawer-element]):not([data-drawer-element] *)::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
 }
-.slim-scrollbar::-webkit-scrollbar-thumb {
-  background-color: rgba(148, 163, 184, 0.4);
-  border-radius: 9999px;
+
+[data-animation-level="fade-only"] .animate-pulse,
+[data-animation-level="fade-only"] .animate-bounce,
+[data-animation-level="fade-only"] .animate-ping,
+[data-animation-level="fade-only"] .animate-spin-slow {
+  animation: none !important;
 }
+
+/* Simple opacity fade only in eco or fade-only mode (excluding drawer navigation & transform sliders) */
+[data-perf-mode="eco"] *:not([data-drawer-element]):not([data-drawer-element] *),
+[data-animation-level="fade-only"] *:not([data-drawer-element]):not([data-drawer-element] *) {
+  transition-property: opacity, background-color !important;
+}
+
 
 
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Plus,
@@ -23,6 +23,7 @@ interface QuickNoteFabProps {
   onOpenStoreQR?: () => void;
   lang: LanguageCode;
   activeTab?: string;
+  isNavVisible?: boolean;
 }
 
 type ToolAction =
@@ -43,13 +44,83 @@ export const QuickNoteFab: React.FC<QuickNoteFabProps> = ({
   onOpenStoreQR,
   lang,
   activeTab,
+  isNavVisible = true,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isFabVisible, setIsFabVisible] = useState(true);
+  const lastScrollTopRef = useRef<number>(0);
+  const isTickingRef = useRef<boolean>(false);
 
-  // Hide in Suki AI so it never covers the chat input and send buttons
-  if (activeTab === 'SUKI_AI') {
-    return null;
-  }
+  // Reset FAB to visible on tab change
+  useEffect(() => {
+    setIsFabVisible(true);
+    lastScrollTopRef.current = 0;
+  }, [activeTab]);
+
+  // Never hide while the speed dial is expanded
+  useEffect(() => {
+    if (isOpen) {
+      setIsFabVisible(true);
+    }
+  }, [isOpen]);
+
+  // Capture passive scroll listener detecting page and nested containers
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleScroll = (e: Event) => {
+      const target = e.target as HTMLElement | Document | null;
+      if (!target) return;
+
+      // Ignore scrolls from modals, portals, dialogs, or overlay sheets
+      if (target instanceof HTMLElement) {
+        if (
+          target.closest('[role="dialog"]') ||
+          target.closest('.modal-portal') ||
+          target.closest('[data-modal]') ||
+          target.closest('.modal-backdrop') ||
+          target.closest('.fixed.inset-0')
+        ) {
+          return;
+        }
+      }
+
+      if (isTickingRef.current) return;
+      isTickingRef.current = true;
+
+      window.requestAnimationFrame(() => {
+        let currentScrollTop = 0;
+        if (target instanceof HTMLElement && typeof target.scrollTop === 'number' && target !== document.documentElement && target !== document.body) {
+          currentScrollTop = Math.max(0, target.scrollTop);
+        } else {
+          currentScrollTop = Math.max(0, window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0);
+        }
+
+        // Rule: always visible when scrollTop < 50
+        if (currentScrollTop < 50) {
+          setIsFabVisible(true);
+        } else if (!isOpen) {
+          const delta = currentScrollTop - lastScrollTopRef.current;
+          // Rule: scroll down more than 20px -> opacity 0, pointer-events none
+          if (delta > 20) {
+            setIsFabVisible(false);
+          } else if (delta < 0) {
+            // Rule: scroll up -> opacity 1
+            setIsFabVisible(true);
+          }
+        }
+
+        lastScrollTopRef.current = currentScrollTop;
+        isTickingRef.current = false;
+      });
+    };
+
+    document.addEventListener('scroll', handleScroll, { capture: true, passive: true });
+
+    return () => {
+      document.removeEventListener('scroll', handleScroll, { capture: true });
+    };
+  }, [isOpen]);
 
   const handleToggle = () => {
     setIsOpen((prev) => !prev);
@@ -99,7 +170,13 @@ export const QuickNoteFab: React.FC<QuickNoteFabProps> = ({
       </AnimatePresence>
 
       {/* Speed Dial Container */}
-      <div className={`fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] landscape:bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px))] right-3.5 sm:right-6 md:bottom-8 md:right-8 ${isOpen ? 'z-[56]' : 'z-30'} flex flex-col items-end gap-2 select-none pointer-events-none`}>
+      <div
+        className={`fixed right-3.5 sm:right-6 md:bottom-8 md:right-8 bottom-[var(--fab-bottom)] landscape:bottom-[var(--fab-bottom)] ${
+          isOpen || isFabVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+        } transition-opacity duration-200 ease-in-out ${
+          isOpen ? 'z-[56]' : 'z-45'
+        } flex flex-col items-end gap-2 select-none`}
+      >
         {/* Speed Dial Expanded Options (fanning upward) */}
         <AnimatePresence>
           {isOpen && (
@@ -116,7 +193,7 @@ export const QuickNoteFab: React.FC<QuickNoteFabProps> = ({
                   transition: { staggerChildren: 0.03, staggerDirection: -1 },
                 },
               }}
-              className="flex flex-col items-end gap-2 pointer-events-auto mb-1 max-h-[72vh] overflow-y-auto pr-0.5 pb-0.5"
+              className="flex flex-col items-end gap-2 pointer-events-auto mb-1 max-h-[72vh] overflow-y-auto no-scrollbar pr-0.5 pb-0.5"
             >
               {/* Option 1: 📷 Scanner (Camera / Barcode / OCR) */}
               <motion.button

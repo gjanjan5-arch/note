@@ -155,7 +155,7 @@ const THEME_DEFINITIONS: Record<ThemePalette, Record<AppearanceMode, ColorThemeT
       surfaceSubtle: '#eff6ff',
       text: '#0f172a',
       textSecondary: '#475569',
-      textMuted: '#94a3b8',
+      textMuted: '#64748b',
       border: '#cbd5e1',
       borderSubtle: '#e2e8f0',
       cardBorder: '#e2e8f0',
@@ -235,7 +235,7 @@ const THEME_DEFINITIONS: Record<ThemePalette, Record<AppearanceMode, ColorThemeT
       surfaceSubtle: '#ecfdf5',
       text: '#06281e',
       textSecondary: '#334155',
-      textMuted: '#94a3b8',
+      textMuted: '#64748b',
       border: '#cbd5e1',
       borderSubtle: '#e2e8f0',
       cardBorder: '#e2e8f0',
@@ -315,7 +315,7 @@ const THEME_DEFINITIONS: Record<ThemePalette, Record<AppearanceMode, ColorThemeT
       surfaceSubtle: '#fff7ed',
       text: '#271406',
       textSecondary: '#475569',
-      textMuted: '#94a3b8',
+      textMuted: '#64748b',
       border: '#cbd5e1',
       borderSubtle: '#e2e8f0',
       cardBorder: '#e2e8f0',
@@ -395,7 +395,7 @@ const THEME_DEFINITIONS: Record<ThemePalette, Record<AppearanceMode, ColorThemeT
       surfaceSubtle: '#f5f3ff',
       text: '#1e1035',
       textSecondary: '#475569',
-      textMuted: '#94a3b8',
+      textMuted: '#64748b',
       border: '#cbd5e1',
       borderSubtle: '#e2e8f0',
       cardBorder: '#e2e8f0',
@@ -472,9 +472,10 @@ export function applyTheme(settings: ThemeSettings): void {
 
   const tokens = THEME_DEFINITIONS[palette]?.[mode] || THEME_DEFINITIONS.botanical.light;
 
-  // Set data attributes
+  // Set data attributes and class
   root.setAttribute('data-theme-palette', palette);
   root.setAttribute('data-theme-mode', mode);
+  root.classList.toggle('dark', mode === 'dark' || mode === 'amoled');
 
   // Set CSS variables
   root.style.setProperty('--color-primary', tokens.primary);

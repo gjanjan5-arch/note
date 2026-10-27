@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { UserPlus, Send, History, Check, Phone, Copy, Sparkles, Pencil, Trash2, X, Receipt, User, ChevronRight } from 'lucide-react';
+import { UserPlus, Send, History, Check, Phone, Copy, Sparkles, Pencil, Trash2, X, Receipt, User, ChevronRight, CreditCard } from 'lucide-react';
 import type { Customer, Transaction, TransactionType } from '../types';
 import { db, updateTransactionEntry, recalculateCustomerBalance } from '../db/db';
 import { formatPeso, formatDateTime, generatePautangReminderMsg, getLocalDateStr, formatDisplayNote, formatDisplayItemName } from '../utils/formatters';
 import { translate, type LanguageCode } from '../utils/i18n';
 import { FormalReceipt } from './FormalReceipt';
+import { useExplorationTutorial } from '../context/ExplorationTutorialContext';
+import { useBodyScrollLock } from '../utils/scrollLock';
 
 interface PautangLedgerProps {
   customers: Customer[];
@@ -24,6 +26,39 @@ export const PautangLedger: React.FC<PautangLedgerProps> = ({
   onClearPrefillAction,
 }) => {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const { triggerTip } = useExplorationTutorial();
+
+  useEffect(() => {
+    triggerTip({
+      id: 'pautang_intro',
+      icon: CreditCard,
+      title: {
+        tl: 'Kwaderno ng Pautang',
+        en: 'Customer Credit Ledger',
+      },
+      desc: {
+        tl: 'Dito mo mabilisang masusubaybayan ang utang ng bawat suki, magdagdag ng pautang, o mag-record ng bayad.',
+        en: 'Easily track each customer\'s running debt balance, record payments, and manage suki credit.',
+      },
+    });
+  }, [triggerTip]);
+
+  useEffect(() => {
+    if (customers.length > 0) {
+      triggerTip({
+        id: 'pautang_first_customer',
+        icon: User,
+        title: {
+          tl: 'Talaan ng Suki',
+          en: 'Suki Credit Profile',
+        },
+        desc: {
+          tl: 'I-tap ang pangalan ng suki para makita ang listahan ng kanyang kinuha, magpadala ng magalang na SMS reminder, o mag-tanggap ng hulog.',
+          en: 'Tap any suki card to view their itemized credit history, accept partial payments, or send polite SMS reminders.',
+        },
+      });
+    }
+  }, [customers.length, triggerTip]);
 
   useEffect(() => {
     if (prefillAction) {
@@ -41,6 +76,7 @@ export const PautangLedger: React.FC<PautangLedgerProps> = ({
   // Modals
   const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
   const [newCustomerName, setNewCustomerName] = useState('');
+  const [newCustomerInitialCredit, setNewCustomerInitialCredit] = useState('');
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
   const [newCustomerNotes, setNewCustomerNotes] = useState('');
 
@@ -91,22 +127,16 @@ export const PautangLedger: React.FC<PautangLedgerProps> = ({
     viewingDetailTx
   );
 
-  useEffect(() => {
-    if (!isAnySubModalOpen) return;
-    const originalOverflow = document.body.style.overflow;
-    const originalTouchAction = document.body.style.touchAction;
-    const originalOverscroll = document.body.style.overscrollBehavior;
+  // Prevent background scrolling while open with centralized leak-proof lock
+  useBodyScrollLock(Boolean(isAnySubModalOpen));
 
-    document.body.style.overflow = 'hidden';
-    document.body.style.touchAction = 'none';
-    document.body.style.overscrollBehavior = 'none';
-
-    return () => {
-      document.body.style.overflow = originalOverflow;
-      document.body.style.touchAction = originalTouchAction;
-      document.body.style.overscrollBehavior = originalOverscroll || '';
-    };
-  }, [isAnySubModalOpen]);
+  const handleCloseAddCustomer = () => {
+    setNewCustomerName('');
+    setNewCustomerInitialCredit('');
+    setNewCustomerPhone('');
+    setNewCustomerNotes('');
+    setIsAddCustomerOpen(false);
+  };
 
   // Handle Add Customer
   const handleAddCustomer = async (e: React.FormEvent) => {
@@ -127,16 +157,37 @@ export const PautangLedger: React.FC<PautangLedgerProps> = ({
       }
 
       const cleanPhone = newCustomerPhone.replace(/\D/g, '').slice(0, 11);
+      const parsedCredit = parseFloat(newCustomerInitialCredit);
+      const initialCredit = !isNaN(parsedCredit) && parsedCredit > 0 ? parsedCredit : 0;
 
       await db.customers.add({
         name: trimmed,
         phone: cleanPhone || undefined,
-        currentBalance: 0,
+        currentBalance: initialCredit,
         lastTransactionAt: Date.now(),
         notes: newCustomerNotes.trim() || undefined,
       });
 
+      if (initialCredit > 0) {
+        const todayStr = getLocalDateStr();
+        await db.transactions.add({
+          timestamp: Date.now(),
+          dateStr: todayStr,
+          type: 'PAUTANG_RECORD',
+          customerName: trimmed,
+          items: [{ itemName: lang === 'tl' ? 'Paunang Utang' : 'Initial Credit', quantity: 1, totalPrice: initialCredit }],
+          totalAmount: initialCredit,
+          rawNote: lang === 'tl'
+            ? `pautang ${trimmed} Paunang Utang ${initialCredit}`
+            : `credit ${trimmed} Initial Credit ${initialCredit}`,
+          notes: lang === 'tl' ? 'Paunang utang pagka-rehistro' : 'Initial credit upon registration',
+          syncStatus: 'LOCAL',
+        });
+        await recalculateCustomerBalance(trimmed);
+      }
+
       setNewCustomerName('');
+      setNewCustomerInitialCredit('');
       setNewCustomerPhone('');
       setNewCustomerNotes('');
       setIsAddCustomerOpen(false);
@@ -542,7 +593,7 @@ export const PautangLedger: React.FC<PautangLedgerProps> = ({
       {isAddCustomerOpen && (
         <div 
           className="fixed inset-0 bg-black/65 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in duration-200"
-          onClick={() => setIsAddCustomerOpen(false)}
+          onClick={handleCloseAddCustomer}
         >
           <div 
             className="theme-card rounded-3xl max-w-md w-full p-5 shadow-2xl border animate-in fade-in "
@@ -561,6 +612,26 @@ export const PautangLedger: React.FC<PautangLedgerProps> = ({
                   placeholder={lang === 'tl' ? 'Hal. Aling Nena, Kapitan Cardo' : 'E.g. Aling Nena, Captain Cardo'}
                   className="w-full theme-input border rounded-xl p-2.5 font-medium theme-text-app focus:outline-none"
                 />
+              </div>
+
+              <div>
+                <label className="block font-bold theme-text-app mb-1">
+                  {lang === 'tl' ? 'Halaga ng Paunang Utang (Opsyonal)' : 'Initial Credit Amount (Optional)'}
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 font-bold">
+                    ₱
+                  </span>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={newCustomerInitialCredit}
+                    onChange={(e) => setNewCustomerInitialCredit(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full theme-input border rounded-xl p-2.5 pl-8 font-mono font-medium theme-text-app placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none"
+                  />
+                </div>
               </div>
 
               <div>
@@ -597,7 +668,7 @@ export const PautangLedger: React.FC<PautangLedgerProps> = ({
               <div className="mt-4 flex items-center justify-end gap-2 pt-2 border-t theme-border-subtle">
                 <button
                   type="button"
-                  onClick={() => setIsAddCustomerOpen(false)}
+                  onClick={handleCloseAddCustomer}
                   className="px-4 py-2 rounded-xl theme-text-secondary hover:bg-white/10 font-bold"
                 >
                   {translate(lang, 'btn_cancel')}
@@ -630,7 +701,7 @@ export const PautangLedger: React.FC<PautangLedgerProps> = ({
 
         return (
           <div
-            className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] animate-in fade-in duration-200"
             onClick={(e) => {
               if (e.target === e.currentTarget) {
                 setIsCustomerDetailModalOpen(false);
@@ -638,7 +709,7 @@ export const PautangLedger: React.FC<PautangLedgerProps> = ({
             }}
           >
             <div
-              className="theme-card rounded-3xl max-w-md w-full p-4 sm:p-5 shadow-2xl border animate-in  my-auto max-h-[90vh] flex flex-col justify-between"
+              className="theme-card rounded-3xl max-w-md w-full p-4 sm:p-5 shadow-2xl border animate-in my-auto max-h-[85vh] overflow-y-auto no-scrollbar flex flex-col justify-between"
               onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}
               style={{ touchAction: 'manipulation' }}
             >
@@ -1072,7 +1143,7 @@ export const PautangLedger: React.FC<PautangLedgerProps> = ({
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
+            <div className="flex-1 overflow-y-auto no-scrollbar space-y-2.5 pr-1">
               {transactions
                 .filter(
                   (tx) => tx.customerName?.toLowerCase() === selectedCustomer.name.toLowerCase()

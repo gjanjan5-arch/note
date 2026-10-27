@@ -8,7 +8,7 @@ export default defineConfig(() => {
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        '@': path.resolve(__dirname, './src'),
         'motion/react': path.resolve(__dirname, './src/utils/motionShim.tsx'),
       },
       dedupe: ['react', 'react-dom'],

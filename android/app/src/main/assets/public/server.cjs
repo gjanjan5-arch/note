@@ -249,6 +249,91 @@ app.post("/api/gemini/generate-image", async (req, res) => {
     return res.status(500).json({ error: err?.message || "Failed to generate store image" });
   }
 });
+app.post("/api/gemini/recognize-product", async (req, res) => {
+  try {
+    const { base64Image, mimeType = "image/jpeg", inventoryList = [] } = req.body;
+    if (!base64Image || typeof base64Image !== "string") {
+      return res.status(400).json({ error: "base64Image is required" });
+    }
+    const ai = getGeminiClient();
+    const inventoryContext = Array.isArray(inventoryList) && inventoryList.length > 0 ? `Store inventory items for matching: ${JSON.stringify(inventoryList)}` : "No current inventory items provided.";
+    const prompt = `You are a specialized AI Vision product recognizer for Philippine sari-sari store products.
+Examine this product packaging photo carefully. Pay special attention to stylized, 3D, comic, bubble, arched, slanted, or decorated brand typography (such as "SUPERSTIX", "SUPER DOTS", "JUNIOR Stik-O", "WOW! ULAM LECHON PAKSIW", "BEAR BRAND FORTIFIED SWAK PACK", "LUCKY ME", "PIATTOS", etc.).
+
+${inventoryContext}
+
+Task:
+1. Extract the main product brand name, item name, flavor, and pack weight (e.g. "SUPERSTIX Wafer Sticks Ube Flavor", "WOW! ULAM Lechon Paksiw", "Bear Brand Fortified Powdered Milk Drink 33g Swak Pack", "Junior Stik-O Chocolate Wafer Stick").
+2. Match it to the closest existing item from the store inventory list if a match exists.
+3. Return clean JSON matching the specified schema.`;
+    const imagePart = {
+      inlineData: {
+        mimeType,
+        data: base64Image.replace(/^data:image\/\w+;base64,/, "")
+      }
+    };
+    const config = {
+      temperature: 0.1,
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: import_genai.Type.OBJECT,
+        properties: {
+          productName: {
+            type: import_genai.Type.STRING,
+            description: "Full recognized product name with brand, variant, and flavor"
+          },
+          brand: {
+            type: import_genai.Type.STRING,
+            description: "Brand name extracted from photo"
+          },
+          flavorOrVariant: {
+            type: import_genai.Type.STRING,
+            description: "Flavor, variant, or packaging detail"
+          },
+          matchedSku: {
+            type: import_genai.Type.STRING,
+            description: "SKU from store inventory if matched, or null"
+          },
+          confidence: {
+            type: import_genai.Type.NUMBER,
+            description: "Confidence score from 0.0 to 1.0"
+          }
+        },
+        required: ["productName", "brand"]
+      }
+    };
+    const fallbackModels = [
+      "gemini-3.8-flash",
+      "gemini-3.7-flash",
+      "gemini-flash-latest",
+      "gemini-3.1-flash-lite"
+    ];
+    let response = null;
+    let lastError = null;
+    for (const targetModel of fallbackModels) {
+      try {
+        response = await ai.models.generateContent({
+          model: targetModel,
+          contents: { parts: [imagePart, { text: prompt }] },
+          config
+        });
+        if (response?.text) break;
+      } catch (err) {
+        lastError = err;
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+    }
+    if (!response?.text) {
+      throw lastError || new Error("All models failed to recognize product image");
+    }
+    const parsedText = response.text?.trim() || "{}";
+    const jsonResult = JSON.parse(parsedText);
+    return res.json(jsonResult);
+  } catch (err) {
+    console.error("Error recognizing product image:", err);
+    return res.status(500).json({ error: err?.message || "Failed to recognize product image" });
+  }
+});
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await (0, import_vite.createServer)({

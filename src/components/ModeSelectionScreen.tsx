@@ -8,8 +8,8 @@ interface ModeSelectionScreenProps {
 export const ModeSelectionScreen: React.FC<ModeSelectionScreenProps> = ({ onSelectMode }) => {
  return (
   <div className="min-h-screen w-full theme-bg-app theme-text-app flex flex-col justify-between p-4 sm:p-6 md:p-8 font-sans antialiased selection:bg-amber-500/20">
-   {/* Top spacing & Decorative Header */}
-   <div className="max-w-xl w-full mx-auto pt-6 sm:pt-10 text-center space-y-3 animate-in fade-in duration-300">
+   {/* Top spacing & Decorative Header with Centralized Safe Area Clearance */}
+   <div className="max-w-xl w-full mx-auto safe-pt-header text-center space-y-3 animate-in fade-in duration-300">
     <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full theme-bg-surface-subtle border theme-border-subtle text-xs font-bold text-amber-400 mb-1 shadow-2xs">
      <Sparkles className="w-3.5 h-3.5" />
      <span>Quick First-Time Setup</span>
@@ -107,8 +107,8 @@ export const ModeSelectionScreen: React.FC<ModeSelectionScreenProps> = ({ onSele
     </button>
    </div>
 
-   {/* Footer note */}
-   <div className="max-w-xl w-full mx-auto pb-4 text-center">
+   {/* Footer note with Centralized Safe Area Clearance */}
+   <div className="max-w-xl w-full mx-auto safe-pb-screen text-center">
     <div className="inline-flex items-center gap-1.5 text-[11px] font-medium theme-text-secondary bg-black/20 px-3 py-1.5 rounded-full border theme-border-subtle">
      <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
      <span>You can switch between Seller and Buyer mode anytime in Settings.</span>

@@ -628,17 +628,23 @@ export const ItemRecognizedModal: React.FC<ItemRecognizedModalProps> = ({
               </div>
             )}
 
-            {/* Current Item Card Banner */}
+            {/* Current Item Card Banner with Active Photo Verification */}
             <div className="theme-bg-surface-subtle p-3 rounded-2xl border theme-border-subtle flex items-center gap-3">
               {item.photo ? (
-                <img
-                  src={item.photo}
-                  alt={item.name}
-                  className="w-14 h-14 rounded-xl object-cover border theme-border-subtle shrink-0"
-                />
+                <div className="relative shrink-0">
+                  <div className="absolute inset-0 bg-amber-500/20 rounded-xl animate-pulse" />
+                  <img
+                    src={item.photo}
+                    alt={item.name}
+                    className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl object-cover border-2 border-amber-500/50 relative z-10 shadow-lg"
+                  />
+                  <div className="absolute -bottom-2 -right-2 bg-amber-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-md shadow-sm z-20">
+                    VERIFIED
+                  </div>
+                </div>
               ) : (
-                <div className="w-14 h-14 rounded-xl theme-bg-card flex items-center justify-center theme-text-accent border theme-border-subtle shrink-0">
-                  <Package className="w-6 h-6" />
+                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl theme-bg-card flex items-center justify-center theme-text-accent border theme-border-subtle shrink-0 shadow-md">
+                  <Package className="w-8 h-8 opacity-50" />
                 </div>
               )}
               <div className="flex-1 min-w-0">

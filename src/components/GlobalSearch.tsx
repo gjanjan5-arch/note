@@ -10,6 +10,8 @@ import { useGlobalSearch } from '../hooks/useGlobalSearch';
 import { translate, type LanguageCode } from '../utils/i18n';
 import { formatPeso, formatDateTime } from '../utils/formatters';
 import { safeStorage } from '../utils/safeStorage';
+import { usePerformance } from '../context/PerformanceContext';
+import { useBodyScrollLock } from '../utils/scrollLock';
 
 const RECENT_SEARCHES_KEY = 'tindahan_recent_searches_global';
 const MAX_RECENT_SEARCHES = 3;
@@ -21,7 +23,7 @@ interface GlobalSearchProps {
   customers: Customer[];
   transactions: Transaction[];
   savedStores?: CatalogPayload[];
-  appMode?: 'seller' | 'buyer';
+  appMode?: 'seller' | 'owner' | 'buyer';
   lang: LanguageCode;
   initialQuery?: string;
   
@@ -53,6 +55,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const { searchDebounceMs } = usePerformance();
 
   // Sync initial query
   useEffect(() => {
@@ -61,22 +64,8 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
     }
   }, [isOpen, initialQuery]);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    const originalOverflow = document.body.style.overflow;
-    const originalTouchAction = document.body.style.touchAction;
-    const originalOverscroll = document.body.style.overscrollBehavior;
-
-    document.body.style.overflow = 'hidden';
-    document.body.style.touchAction = 'none';
-    document.body.style.overscrollBehavior = 'none';
-
-    return () => {
-      document.body.style.overflow = originalOverflow;
-      document.body.style.touchAction = originalTouchAction;
-      document.body.style.overscrollBehavior = originalOverscroll || '';
-    };
-  }, [isOpen]);
+  // Prevent background scrolling while open with centralized leak-proof lock
+  useBodyScrollLock(isOpen);
 
   // Use the existing fuse hook
   const { flatResults: results, counts, isSearching } = useGlobalSearch({
@@ -88,7 +77,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
     savedStores,
     appMode,
     lang,
-    debounceMs: 150,
+    debounceMs: searchDebounceMs,
   });
 
   // Safe storage for recent searches (max 3, FIFO eviction)
@@ -423,8 +412,12 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
         >
           <div className="flex items-start justify-between gap-2.5">
             <div className="flex items-center gap-2.5 min-w-0 flex-1">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl theme-bg-surface border theme-border shadow-2xs flex items-center justify-center shrink-0">
-                <Icon className="w-4 h-4 sm:w-5 sm:h-5 theme-text-secondary" />
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl theme-bg-surface border theme-border shadow-2xs flex items-center justify-center shrink-0 overflow-hidden">
+                {isProduct && (item as Extract<GlobalSearchResultItem, { type: 'PRODUCT' }>).item.photo ? (
+                  <img src={(item as Extract<GlobalSearchResultItem, { type: 'PRODUCT' }>).item.photo} alt={item.title} className="w-full h-full object-cover" />
+                ) : (
+                  <Icon className="w-5 h-5 sm:w-6 sm:h-6 theme-text-secondary" />
+                )}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="text-sm sm:text-base font-bold theme-text-app truncate">
@@ -570,7 +563,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
             </div>
 
             {/* Scrollable Content Area */}
-            <div className="flex-1 overflow-y-auto px-3 sm:px-4 py-4 space-y-4">
+            <div className="flex-1 overflow-y-auto no-scrollbar px-3 sm:px-4 py-4 space-y-4">
               
               {/* Empty State / Recent Searches */}
               {!query && recentSearches.length > 0 && (

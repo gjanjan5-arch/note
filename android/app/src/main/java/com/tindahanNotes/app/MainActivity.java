@@ -1,13 +1,13 @@
 package com.tindahanNotes.app;
 
 import android.os.Bundle;
-import androidx.core.view.WindowCompat;
+import androidx.activity.EdgeToEdge;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
     @Override
-    protected void onCreate(Bundle savedInstaceState) {
-        super.onCreate(savedInstaceState);
-        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+    public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        EdgeToEdge.enable(this);
     }
 }

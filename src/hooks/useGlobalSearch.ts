@@ -20,7 +20,7 @@ interface UseGlobalSearchOptions {
   customers: Customer[];
   transactions: Transaction[];
   savedStores?: CatalogPayload[];
-  appMode?: 'seller' | 'buyer';
+  appMode?: 'seller' | 'owner' | 'buyer';
   lang: LanguageCode;
   debounceMs?: number;
   maxResultsPerCategory?: number;
@@ -212,7 +212,7 @@ export function useGlobalSearch({
       };
     };
 
-    if (appMode === 'seller') {
+    if (appMode !== 'buyer') {
       // PRODUCTS
       if (category === 'ALL' || category === 'PRODUCTS') {
         matchedProducts = nativeSearch(

@@ -127,31 +127,42 @@ export const QRCodeCanvas = forwardRef<HTMLCanvasElement, QRCodeCanvasProps>(
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
+      const dpr = typeof window !== 'undefined' ? Math.max(1, window.devicePixelRatio || 1) : 1;
+      const targetPixelSize = Math.round(size * dpr);
+
+      if (canvas.width !== targetPixelSize || canvas.height !== targetPixelSize) {
+        canvas.width = targetPixelSize;
+        canvas.height = targetPixelSize;
+      }
+
+      ctx.imageSmoothingEnabled = false;
+
       const moduleCount = matrix.length;
       if (moduleCount === 0) {
         ctx.fillStyle = bgColor;
-        ctx.fillRect(0, 0, size, size);
+        ctx.fillRect(0, 0, targetPixelSize, targetPixelSize);
         return;
       }
 
       const totalModules = moduleCount + margin * 2;
-      const cellSize = size / totalModules;
+      const cellSize = targetPixelSize / totalModules;
 
       // Fill background
       ctx.fillStyle = bgColor;
-      ctx.fillRect(0, 0, size, size);
+      ctx.fillRect(0, 0, targetPixelSize, targetPixelSize);
 
-      // Fill modules
+      // Fill dark modules with contiguous integer boundaries to avoid subpixel overlap/gaps
       ctx.fillStyle = fgColor;
       for (let r = 0; r < moduleCount; r++) {
+        const y1 = Math.round((r + margin) * cellSize);
+        const y2 = Math.round((r + margin + 1) * cellSize);
+        const h = y2 - y1;
         for (let c = 0; c < moduleCount; c++) {
           if (matrix[r][c]) {
-            ctx.fillRect(
-              Math.floor((c + margin) * cellSize),
-              Math.floor((r + margin) * cellSize),
-              Math.ceil(cellSize),
-              Math.ceil(cellSize)
-            );
+            const x1 = Math.round((c + margin) * cellSize);
+            const x2 = Math.round((c + margin + 1) * cellSize);
+            const w = x2 - x1;
+            ctx.fillRect(x1, y1, w, h);
           }
         }
       }
@@ -164,6 +175,8 @@ export const QRCodeCanvas = forwardRef<HTMLCanvasElement, QRCodeCanvasProps>(
         height={size}
         style={{
           display: 'block',
+          width: size,
+          height: size,
           maxWidth: '100%',
           ...style,
         }}

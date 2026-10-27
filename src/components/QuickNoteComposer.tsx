@@ -18,6 +18,7 @@ import type { Note } from '../types';
 import { formatDateTime } from '../utils/formatters';
 import { translate, type LanguageCode } from '../utils/i18n';
 import { getSavedQuickNoteHeight, saveQuickNoteHeight } from '../utils/storeSettings';
+import { useBodyScrollLock } from '../utils/scrollLock';
 
 interface QuickNoteComposerProps {
   isOpen: boolean;
@@ -99,22 +100,8 @@ export const QuickNoteComposer: React.FC<QuickNoteComposerProps> = ({
     }
   }, [isOpen]);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    const originalOverflow = document.body.style.overflow;
-    const originalTouchAction = document.body.style.touchAction;
-    const originalOverscroll = document.body.style.overscrollBehavior;
-
-    document.body.style.overflow = 'hidden';
-    document.body.style.touchAction = 'none';
-    document.body.style.overscrollBehavior = 'none';
-
-    return () => {
-      document.body.style.overflow = originalOverflow;
-      document.body.style.touchAction = originalTouchAction;
-      document.body.style.overscrollBehavior = originalOverscroll || '';
-    };
-  }, [isOpen]);
+  // Prevent background scrolling while open with centralized leak-proof lock
+  useBodyScrollLock(isOpen);
 
   // --- VERTICAL RESIZE HANDLERS ---
   const handleDragStart = (clientY: number) => {
@@ -260,17 +247,6 @@ export const QuickNoteComposer: React.FC<QuickNoteComposerProps> = ({
     setPositionOffset({ x: 0, y: 0 });
     currentOffsetRef.current = { x: 0, y: 0 };
   };
-
-  // Prevent background scrolling while Mabilisang Tala is open
-  useEffect(() => {
-    if (isOpen) {
-      const originalOverflow = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      return () => {
-        document.body.style.overflow = originalOverflow;
-      };
-    }
-  }, [isOpen]);
 
   // Load notes and periodically clean expired ones
   const fetchNotes = async () => {
@@ -596,7 +572,7 @@ export const QuickNoteComposer: React.FC<QuickNoteComposerProps> = ({
             </div>
 
             {/* Body Content: Switch between Composer View and Notes List with Independent Scrolling */}
-            <div className="overflow-y-auto overscroll-contain px-4 sm:px-5 pt-3 pb-4 sm:pb-5 space-y-3.5 flex-1 min-h-0 select-text">
+            <div className="overflow-y-auto no-scrollbar overscroll-contain px-4 sm:px-5 pt-3 pb-4 sm:pb-5 space-y-3.5 flex-1 min-h-0 select-text">
               {isComposing ? (
                 /* Composer & Edit Form */
                 <form onSubmit={handleSave} className="space-y-3">

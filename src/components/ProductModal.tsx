@@ -6,6 +6,7 @@ import { translate, LanguageCode } from '../utils/i18n';
 interface ProductModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onOpenScanner: () => void;
   editingItem: InventoryItem | null;
   lang: LanguageCode;
   name: string;
@@ -53,6 +54,7 @@ interface ProductModalProps {
 export const ProductModal: React.FC<ProductModalProps> = ({
   isOpen,
   onClose,
+  onOpenScanner,
   editingItem,
   lang,
   name,
@@ -190,7 +192,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                     placeholder="Scan or Type SKU"
                     className="flex-1 theme-input border rounded-xl p-3 font-bold theme-text-app focus:outline-none text-sm"
                 />
-                <button type="button" className="theme-bg-surface-subtle p-3 rounded-xl border">
+                <button type="button" onClick={onOpenScanner} className="theme-bg-surface-subtle p-3 rounded-xl border">
                     <Barcode className="w-5 h-5 theme-text-accent" />
                 </button>
              </div>
@@ -369,7 +371,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                 <span>{lang === 'tl' ? 'Larawan ng Paninda' : 'Product Photo'}</span>
               </span>
               <span className="text-[10px] theme-text-secondary font-bold">
-                {isCompressingPhoto ? 'Compressing...' : 'Optional'}
+                {isCompressingPhoto ? (lang === 'tl' ? 'Pina-process' : 'Processing') : (lang === 'tl' ? 'Opsyonal' : 'Optional')}
               </span>
             </label>
 

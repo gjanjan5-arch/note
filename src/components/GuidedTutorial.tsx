@@ -9,7 +9,6 @@ import {
  CreditCard,
  Package,
  TrendingUp,
- Bot,
  Database,
  Palette,
  CheckCircle2,
@@ -17,7 +16,7 @@ import {
 import { translate, type LanguageCode } from '../utils/i18n';
 import { setTutorialCompleted } from '../utils/storeSettings';
 
-export type AppTab = 'LISTA' | 'PAUTANG' | 'PANINDA' | 'ANALYTICS' | 'SUKI_AI';
+export type AppTab = 'LISTA' | 'PAUTANG' | 'PANINDA' | 'ANALYTICS';
 
 interface GuidedTutorialProps {
  isOpen: boolean;
@@ -240,40 +239,7 @@ const TOUR_STEPS: StepConfig[] = [
   },
  },
 
- // 7. SUKI AI (AI Business Advisor)
- {
-  id: 'suki_ai',
-  targetId: 'suki-ai-header',
-  tabRequirement: 'SUKI_AI',
-  titleKey: 'suki_ai_title',
-  descKey: 'suki_ai_desc',
-  icon: Bot,
-  content: {
-   title: {
-    en: 'SUKI AI: Your Smart Store Consultant',
-    tl: 'SUKI AI: Ang Iyong AI Tagapayo sa Tindahan',
-    ja: 'SUKI AI: 店舗経営AIアドバイザー',
-    zh: 'SUKI AI: 智能零售经营顾问',
-    ko: 'SUKI AI: 스마트 매장 경영 어드바이저',
-   },
-   desc: {
-    en: 'Ask Suki AI in Tagalog or English for tailored advice on product pricing, handling pautang diplomatically, fast-moving items, and promos. (Requires internet; bookkeeping works offline).',
-    tl: 'Magtanong kay Suki AI sa Tagalog o English tungkol sa tamang presyo, diskarte sa pautang, at mabilis mabentang paninda. (Kailangan ng internet para sa AI; offline ang listahan).',
-    ja: '価格設定やツケの回収マナー、売れ筋商品の見極めをAIに相談できます。（AI機能のみネット接続が必要です）。',
-    zh: '随时向Suki AI咨询定价策略、礼貌催账话术与热销选品。（AI功能需联网，日常记账离线运行）。',
-    ko: '가격 책정, 외상 수금 요령 및 인기 상품 추천을 Suki AI와 상의하세요. (AI 기능만 인터넷 필요).',
-   },
-   exampleNote: {
-    en: '"Paano maiwasan ang malaking pautang?"',
-    tl: '"Paano maiwasan ang malaking pautang?"',
-    ja: '「常連客との関係を壊さずに売掛金を回収するコツは？」',
-    zh: '“如何在不影响顾客关系的前提下礼貌收回欠款？”',
-    ko: '“단골과의 관계를 해치지 않고 외상을 회수하는 방법은?”',
-   },
-  },
- },
-
- // 8. AUD: AUTO-UPDATE DATA & BACKUP
+ // 7. AUD: AUTO-UPDATE DATA & BACKUP
  {
   id: 'backup_data',
   isCenter: true,
@@ -418,11 +384,6 @@ export const GuidedTutorial: React.FC<GuidedTutorialProps> = ({
    // Fallback for step 2 (lista) when store is newly installed and has 0 transaction records
    if (!el && step.targetId === 'first-transaction-card') {
     el = document.getElementById('transaction-empty-state') || document.getElementById('transaction-filter-header');
-   }
-
-   // Fallback for step 7 (suki-ai)
-   if (!el && step.targetId === 'suki-ai-header') {
-    el = document.getElementById('suki-ai-container') || document.getElementById('mobile-nav-suki_ai-tab') || document.getElementById('nav-suki_ai-tab');
    }
 
    if (el) {
@@ -631,7 +592,7 @@ export const GuidedTutorial: React.FC<GuidedTutorialProps> = ({
     className="theme-card rounded-3xl p-4 sm:p-5 shadow-2xl border flex flex-col justify-between overflow-hidden animate-in fade-in duration-200 pointer-events-auto"
    >
     {/* Scrollable Content Container */}
-    <div className="overflow-y-auto overscroll-contain pr-1 space-y-3">
+    <div className="overflow-y-auto no-scrollbar overscroll-contain pr-1 space-y-3">
      {/* Header with Step Counter, Badge & Skip */}
      <div className="flex items-center justify-between pb-2 border-b theme-border-subtle">
       <div className="flex items-center gap-2.5">

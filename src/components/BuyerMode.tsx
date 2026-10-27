@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   QrCode,
@@ -26,6 +26,8 @@ import {
   Trash2,
   Receipt,
   PanelLeft,
+  Lightbulb,
+  ChevronRight,
 } from 'lucide-react';
 import { QRCode } from './QRCode';
 import LZString from 'lz-string';
@@ -40,11 +42,25 @@ import { playScanBeep } from '../utils/audioBeep';
 import { safeStorage } from '../utils/safeStorage';
 import type { Transaction } from '../types';
 import { FormalReceipt } from './FormalReceipt';
-import { saveBuyerReceipt, recordBuyerUtang } from '../utils/buyerActivity';
+import { useBodyScrollLock } from '../utils/scrollLock';
+import {
+  saveBuyerReceipt,
+  recordBuyerUtang,
+  getBuyerReceipts,
+  getBuyerUtangs,
+  calculateStoreNetUtang,
+  calculateTotalBuyerUtang,
+  type BuyerStoreUtang,
+  type BuyerDigitalReceipt,
+} from '../utils/buyerActivity';
+import { BuyerRecommendationsModal } from './BuyerRecommendationsModal';
 import { BarcodeScanner } from '@capacitor-mlkit/barcode-scanning';
 import { Capacitor } from '@capacitor/core';
 import { ScannerModal } from './ScannerModal';
+import { BurgerIcon } from './BurgerIcon';
 import type { CatalogItem, CatalogPayload } from '../types';
+import { useExplorationTutorial } from '../context/ExplorationTutorialContext';
+import { useScrollNavigation } from '../hooks/useScrollNavigation';
 
 export interface BuyerModeProps {
   lang: LanguageCode;
@@ -52,12 +68,16 @@ export interface BuyerModeProps {
   onOpenMenu?: () => void;
   onOpenSearch?: () => void;
   onOpenActivityUtang?: () => void;
+  onOpenBuyerRecommendations?: () => void;
+  isBuyerRecommendationsOpen?: boolean;
+  onCloseBuyerRecommendations?: () => void;
   selectedStoreFromSearch?: CatalogPayload | null;
   onClearSelectedStoreFromSearch?: () => void;
   scanStoreRequested?: boolean;
   onResetScanStoreRequest?: () => void;
   scannedStoreRaw?: string | null;
   onClearScannedStoreRaw?: () => void;
+  isMenuOpen?: boolean;
 }
 
 interface SelectedCartItem {
@@ -126,12 +146,16 @@ export const BuyerMode: React.FC<BuyerModeProps> = ({
   onOpenMenu,
   onOpenSearch,
   onOpenActivityUtang,
+  onOpenBuyerRecommendations,
+  isBuyerRecommendationsOpen,
+  onCloseBuyerRecommendations,
   selectedStoreFromSearch,
   onClearSelectedStoreFromSearch,
   scanStoreRequested,
   onResetScanStoreRequest,
   scannedStoreRaw,
   onClearScannedStoreRaw,
+  isMenuOpen = false,
 }) => {
   const [savedStores, setSavedStores] = useState<CatalogPayload[]>([]);
   const [activeCatalog, setActiveCatalog] = useState<CatalogPayload | null>(null);
@@ -143,7 +167,91 @@ export const BuyerMode: React.FC<BuyerModeProps> = ({
 
   const [isScanningStore, setIsScanningStore] = useState<boolean>(false);
   const [isGeneratingOrder, setIsGeneratingOrder] = useState<boolean>(false);
+  const [isMenuToggling, setIsMenuToggling] = useState<boolean>(false);
   const [cart, setCart] = useState<{ [key: string]: SelectedCartItem }>({});
+  const { triggerTip } = useExplorationTutorial();
+  const { isNavVisible } = useScrollNavigation();
+
+  // Dynamic Buyer Recommendations & Dues Reminder states
+  const [isBannerDismissed, setIsBannerDismissed] = useState<boolean>(false);
+  const [internalBuyerRecoOpen, setInternalBuyerRecoOpen] = useState<boolean>(false);
+  const isRecoModalOpen = isBuyerRecommendationsOpen ?? internalBuyerRecoOpen;
+
+  const [buyerUtangStores, setBuyerUtangStores] = useState<BuyerStoreUtang[]>([]);
+  const [buyerReceipts, setBuyerReceipts] = useState<BuyerDigitalReceipt[]>([]);
+
+  const refreshBuyerMetrics = useCallback(() => {
+    setBuyerUtangStores(getBuyerUtangs());
+    setBuyerReceipts(getBuyerReceipts());
+  }, []);
+
+  useEffect(() => {
+    refreshBuyerMetrics();
+  }, [refreshBuyerMetrics, isRecoModalOpen]);
+
+  // When user triggers recommendations from drawer, un-dismiss banner and open modal
+  useEffect(() => {
+    if (isBuyerRecommendationsOpen) {
+      setIsBannerDismissed(false);
+    }
+  }, [isBuyerRecommendationsOpen]);
+
+  const handleOpenBuyerReco = () => {
+    setIsBannerDismissed(false);
+    if (onOpenBuyerRecommendations) {
+      onOpenBuyerRecommendations();
+    } else {
+      setInternalBuyerRecoOpen(true);
+    }
+  };
+
+  const handleCloseBuyerReco = () => {
+    if (onCloseBuyerRecommendations) {
+      onCloseBuyerRecommendations();
+    }
+    setInternalBuyerRecoOpen(false);
+  };
+
+  const pendingOrdersCount = useMemo(() => {
+    return buyerReceipts.filter((r) => r.status === 'PENDING' || r.paymentMethod === 'UTANG').length;
+  }, [buyerReceipts]);
+
+  const totalUtangAmount = useMemo(() => {
+    return calculateTotalBuyerUtang(buyerUtangStores);
+  }, [buyerUtangStores]);
+
+  useEffect(() => {
+    triggerTip({
+      id: 'buyer_mode_intro',
+      icon: Store,
+      title: {
+        tl: 'Buyer Mode (Suki View)',
+        en: 'Buyer Mode (Customer View)',
+      },
+      desc: {
+        tl: 'Ito ang interface na nakikita ng iyong customer kapag nag-scan ng store QR code o kapag ginawang customer kiosk ang phone.',
+        en: 'This is what customers see when scanning your store QR code or using the phone as a self-order kiosk.',
+      },
+    });
+  }, [triggerTip]);
+
+  const cartItemCount = Object.keys(cart).length;
+  useEffect(() => {
+    if (cartItemCount > 0) {
+      triggerTip({
+        id: 'buyer_cart_checkout',
+        icon: ShoppingBag,
+        title: {
+          tl: 'Shopping Basket at Order QR',
+          en: 'Shopping Basket & Order QR',
+        },
+        desc: {
+          tl: 'Maaaring maglagay ng order ang customer at mag-generate ng Order QR para i-scan ng tindero sa counter nang walang maling order.',
+          en: 'Customers can build their order and generate an Order QR for the cashier to scan without miscommunication.',
+        },
+      });
+    }
+  }, [cartItemCount, triggerTip]);
   const [buyerCash, setBuyerCash] = useState<string>('');
   const [paymentMethodChoice, setPaymentMethodChoice] = useState<'CASH' | 'UTANG'>('CASH');
   const [generatedOrderQr, setGeneratedOrderQr] = useState<string | null>(null);
@@ -170,7 +278,9 @@ export const BuyerMode: React.FC<BuyerModeProps> = ({
   // Sync external scan store request from drawer
   useEffect(() => {
     if (scanStoreRequested) {
+      setScanError(null);
       setIsScanningStore(true);
+      setIsScannerOpen(true);
       onResetScanStoreRequest?.();
     }
   }, [scanStoreRequested, onResetScanStoreRequest]);
@@ -375,26 +485,13 @@ export const BuyerMode: React.FC<BuyerModeProps> = ({
     storeToDelete !== null
   );
 
-  useEffect(() => {
-    if (!isAnyBuyerModalOpen) return;
-    const originalOverflow = document.body.style.overflow;
-    const originalTouchAction = document.body.style.touchAction;
-    const originalOverscroll = document.body.style.overscrollBehavior;
-
-    document.body.style.overflow = 'hidden';
-    document.body.style.touchAction = 'none';
-    document.body.style.overscrollBehavior = 'none';
-
-    return () => {
-      document.body.style.overflow = originalOverflow;
-      document.body.style.touchAction = originalTouchAction;
-      document.body.style.overscrollBehavior = originalOverscroll || '';
-    };
-  }, [isAnyBuyerModalOpen]);
+  // Prevent background scrolling while open with centralized leak-proof lock
+  useBodyScrollLock(isAnyBuyerModalOpen);
 
   // Handle Scanning Store Catalog QR
   const handleStartScanStore = () => {
     setScanError(null);
+    setIsScanningStore(true);
     setIsScannerOpen(true);
   };
 
@@ -402,10 +499,21 @@ export const BuyerMode: React.FC<BuyerModeProps> = ({
     if (!rawString) return;
 
     try {
-      const trimmed = rawString.trim();
+      let trimmed = rawString.trim();
+      if (trimmed.includes('#data=')) {
+        trimmed = trimmed.split('#data=')[1];
+      } else if (trimmed.includes('?data=')) {
+        trimmed = trimmed.split('?data=')[1];
+      }
       let jsonStr = LZString.decompressFromEncodedURIComponent(trimmed);
       if (!jsonStr) {
         jsonStr = LZString.decompressFromBase64(trimmed);
+      }
+      if (!jsonStr && trimmed.includes('%')) {
+        try {
+          const decodedUri = decodeURIComponent(trimmed);
+          jsonStr = LZString.decompressFromEncodedURIComponent(decodedUri) || LZString.decompressFromBase64(decodedUri);
+        } catch (_) {}
       }
       if (!jsonStr) {
         jsonStr = trimmed;
@@ -444,7 +552,7 @@ export const BuyerMode: React.FC<BuyerModeProps> = ({
         storeAddress = String(parsed.loc || '');
         purchaseMessage = String(parsed.m || '');
         offlineText = String(parsed.offlineText || '');
-        ownerName = String(parsed.ownerName || '');
+        ownerName = String(parsed.ownerName || parsed.owner || '');
         ts = parsed.ts || Date.now();
         incomingItems = (parsed.i || parsed.items || []).map((tuple: any) => {
           if (!Array.isArray(tuple)) {
@@ -757,9 +865,23 @@ export const BuyerMode: React.FC<BuyerModeProps> = ({
     const orderPayload = {
       v: 2,
       type: 'BUYER_ORDER',
+      t: 'BO',
       id: orderId,
       storeName: activeCatalog?.storeName || 'Tindahan',
-      items: itemsList,
+      items: itemsList.map((item) => ({
+        name: item.name,
+        qty: item.qty,
+        price: item.price,
+        sku: item.sku || '',
+        variantLabel: item.variantLabel || '',
+      })),
+      i: itemsList.map((item) => [
+        item.name,
+        item.qty,
+        item.price,
+        item.sku || '',
+        item.variantLabel || '',
+      ]),
       total: totalAmount,
       cash: paymentMethodChoice === 'CASH' && cashNum > 0 ? cashNum : undefined,
       paymentMethod,
@@ -886,7 +1008,9 @@ export const BuyerMode: React.FC<BuyerModeProps> = ({
       } font-sans antialiased`}
     >
       {/* Buyer Dedicated Top Title Bar Header */}
-      <header className="sticky top-0 z-30 theme-bg-header backdrop-blur-md border-b theme-border shadow-2xs transition-colors duration-200">
+      <header className={`sticky top-0 z-30 theme-bg-header backdrop-blur-md border-b theme-border shadow-2xs transition-transform duration-300 ease-in-out ${
+        isNavVisible ? 'translate-y-0 pointer-events-auto' : '-translate-y-full pointer-events-none'
+      }`}>
         <div className="max-w-5xl mx-auto px-3 sm:px-4 safe-pt-header pb-2.5 flex items-center justify-between gap-2">
           {/* Top Left: Drawer menu button (or Back if activeCatalog) */}
           <div className="flex items-center gap-2">
@@ -894,7 +1018,7 @@ export const BuyerMode: React.FC<BuyerModeProps> = ({
               <button
                 type="button"
                 onClick={() => setActiveCatalog(null)}
-                className="p-2 rounded-xl theme-bg-surface-subtle theme-text-secondary hover:theme-text-app border theme-border-subtle transition-colors cursor-pointer"
+                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/15 transition-colors cursor-pointer active:scale-95"
                 title={lang === 'tl' ? 'Bumalik sa Suki Stores' : 'Back to Stores'}
               >
                 <ArrowLeft className="w-5 h-5" />
@@ -902,12 +1026,21 @@ export const BuyerMode: React.FC<BuyerModeProps> = ({
             ) : (
               <button
                 type="button"
-                onClick={onOpenMenu}
-                className="p-2 rounded-xl theme-bg-surface-subtle theme-text-app hover:theme-bg-surface border theme-border-subtle transition-colors cursor-pointer"
+                disabled={isMenuToggling}
+                onClick={() => {
+                  if (isMenuToggling) return;
+                  setIsMenuToggling(true);
+                  setTimeout(() => setIsMenuToggling(false), 300);
+                  onOpenMenu?.();
+                }}
+                className={`p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/15 transition-colors cursor-pointer active:scale-95 flex items-center justify-center ${
+                  isMenuToggling ? 'pointer-events-none' : ''
+                }`}
                 title="Open Menu"
                 aria-label="Open Menu"
+                aria-expanded={isMenuOpen}
               >
-                <PanelLeft className="w-5 h-5 stroke-[2.2]" />
+                <BurgerIcon isOpen={isMenuOpen} size={20} color="white" />
               </button>
             )}
 
@@ -916,17 +1049,21 @@ export const BuyerMode: React.FC<BuyerModeProps> = ({
               <button
                 type="button"
                 onClick={() => setShowStoreInfoSheet(true)}
-                className="flex items-center gap-2 theme-bg-surface-subtle hover:theme-bg-surface py-1.5 px-3 rounded-2xl border theme-border transition-all cursor-pointer active:scale-95 touch-manipulation text-left"
+                className="flex items-center gap-2 bg-white/10 hover:bg-white/20 py-1.5 px-3 rounded-2xl border border-white/20 transition-all cursor-pointer active:scale-95 touch-manipulation text-left"
                 title={lang === 'tl' ? 'Tingnan ang detalye ng tindahan' : 'View store details'}
               >
-                <div className="w-7 h-7 rounded-xl theme-bg-primary text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
-                  🏪
+                <div className="w-7 h-7 rounded-xl bg-white text-slate-900 flex items-center justify-center font-bold text-xs shrink-0 shadow-xs border border-white/30 overflow-hidden">
+                  {activeCatalog.icon && activeCatalog.icon.length < 5 ? (
+                    <span className="text-sm">{activeCatalog.icon}</span>
+                  ) : (
+                    '🏪'
+                  )}
                 </div>
                 <div className="text-left leading-tight min-w-0">
-                  <div className="text-xs font-black theme-text-app truncate max-w-[140px] sm:max-w-[200px]">
+                  <div className="text-xs font-black text-white truncate max-w-[140px] sm:max-w-[200px]">
                     {activeCatalog.storeName}
                   </div>
-                  <div className="text-[10px] font-bold theme-text-accent flex items-center gap-1">
+                  <div className="text-[10px] font-bold text-white/85 dark:text-slate-200 flex items-center gap-1">
                     <Info className="w-2.5 h-2.5" />
                     <span>{lang === 'tl' ? 'Detatye' : 'Store Info'}</span>
                   </div>
@@ -934,14 +1071,14 @@ export const BuyerMode: React.FC<BuyerModeProps> = ({
               </button>
             ) : (
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-2xl theme-bg-primary text-white flex items-center justify-center font-bold text-sm shadow-2xs">
+                <div className="w-8 h-8 rounded-2xl bg-white text-slate-900 flex items-center justify-center font-bold text-sm shadow-xs border border-white/30 shrink-0">
                   🛒
                 </div>
                 <div>
-                  <h1 className="text-xs sm:text-sm font-black theme-text-app leading-none">
+                  <h1 className="text-xs sm:text-sm font-black text-white leading-none">
                     Tinda
                   </h1>
-                  <p className="text-[10px] theme-text-secondary font-medium">
+                  <p className="text-[10px] text-white/85 dark:text-slate-200 font-medium">
                     {lang === 'tl' ? 'Customer / Suki Portal' : 'Customer / Suki Portal'}
                   </p>
                 </div>
@@ -954,9 +1091,9 @@ export const BuyerMode: React.FC<BuyerModeProps> = ({
             <button
               type="button"
               onClick={onOpenSearch}
-              className="flex items-center gap-2 px-3 py-2 rounded-2xl theme-bg-surface-subtle hover:theme-bg-surface border theme-border text-xs font-bold theme-text-secondary hover:theme-text-app transition-all cursor-pointer active:scale-95"
+              className="hidden flex items-center gap-2 px-3 py-2 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/20 text-xs font-bold text-white transition-all cursor-pointer active:scale-95"
             >
-              <Search className="w-4 h-4 stroke-[2.2] theme-text-app shrink-0" />
+              <Search className="w-4 h-4 stroke-[2.2] text-white shrink-0" />
               <span className="hidden sm:inline">
                 {lang === 'tl' ? 'Maghanap sa Suki Stores...' : 'Search Suki Stores...'}
               </span>
@@ -986,6 +1123,80 @@ export const BuyerMode: React.FC<BuyerModeProps> = ({
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
+              </div>
+            )}
+
+            {/* Dynamic Buyer Recommendations & Dues Notification Banner */}
+            {!isBannerDismissed && (pendingOrdersCount > 0 || totalUtangAmount > 0) && (
+              <div
+                role="button"
+                tabIndex={0}
+                style={{ touchAction: 'manipulation' }}
+                onClick={handleOpenBuyerReco}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleOpenBuyerReco();
+                  }
+                }}
+                className="theme-card rounded-3xl p-3.5 sm:p-4 border border-amber-500/30 bg-amber-500/10 shadow-xs hover:border-amber-500/60 transition-opacity duration-150 cursor-pointer select-none animate-in fade-in"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3 min-w-0 flex-1">
+                    <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-500 border border-amber-500/30 flex items-center justify-center shrink-0">
+                      <Lightbulb className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-black text-xs sm:text-sm theme-text-app">
+                          {lang === 'tl'
+                            ? 'Paalala sa mga Nakabinbing Bili at Utang'
+                            : 'Reminder: Pending Purchases & Credits'}
+                        </span>
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-500 text-white">
+                          {lang === 'tl' ? 'Paalala' : 'Reminder'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] sm:text-xs theme-text-secondary mt-1 leading-snug">
+                        {lang === 'tl'
+                          ? `May ${pendingOrdersCount > 0 ? `${pendingOrdersCount} pending na order` : ''}${
+                              pendingOrdersCount > 0 && totalUtangAmount > 0 ? ' at ' : ''
+                            }${totalUtangAmount > 0 ? `${formatPeso(totalUtangAmount)} kabuuang utang` : ''} sa iyong suki stores.`
+                          : `You have ${pendingOrdersCount > 0 ? `${pendingOrdersCount} pending order${pendingOrdersCount > 1 ? 's' : ''}` : ''}${
+                              pendingOrdersCount > 0 && totalUtangAmount > 0 ? ' and ' : ''
+                            }${totalUtangAmount > 0 ? `${formatPeso(totalUtangAmount)} in store credit` : ''} across suki stores.`}
+                      </p>
+                      <div className="mt-2 flex items-center gap-1 text-[11px] font-extrabold text-amber-500 hover:text-amber-400">
+                        <span>{lang === 'tl' ? 'Tingnan ang Rekomendasyon' : 'View Recommendations'}</span>
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Corner X button to dismiss banner */}
+                  <button
+                    type="button"
+                    role="button"
+                    tabIndex={0}
+                    style={{ touchAction: 'manipulation' }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsBannerDismissed(true);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setIsBannerDismissed(true);
+                      }
+                    }}
+                    className="p-1.5 rounded-xl theme-bg-surface-subtle hover:bg-white/10 theme-text-secondary hover:text-white transition-colors cursor-pointer shrink-0"
+                    title={lang === 'tl' ? 'Itago ang paalala' : 'Dismiss reminder'}
+                    aria-label="Dismiss reminder"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             )}
 
@@ -1071,8 +1282,10 @@ export const BuyerMode: React.FC<BuyerModeProps> = ({
               )}
             </div>
 
-            {/* Floating Scan Store QR Button (FAB) positioned bottom-center */}
-            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30">
+            {/* Floating Scan Store QR Button (FAB) positioned bottom-center with centralized safe clearance */}
+            <div className={`fixed safe-bottom-fab left-1/2 -translate-x-1/2 z-30 transition-transform duration-300 ease-in-out ${
+              isNavVisible ? 'translate-y-0 pointer-events-auto' : 'translate-y-28 pointer-events-none'
+            }`}>
               <button
                 type="button"
                 onClick={handleStartScanStore}
@@ -1216,7 +1429,7 @@ export const BuyerMode: React.FC<BuyerModeProps> = ({
 
       {/* Floating Bottom Cart Panel */}
       {activeCatalog && Object.keys(cart).length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 theme-bg-nav backdrop-blur-md border-t theme-border p-3.5 shadow-2xl">
+        <div className="fixed bottom-0 left-0 right-0 z-40 theme-bg-nav backdrop-blur-md border-t theme-border px-3.5 pt-3.5 safe-pb-nav shadow-2xl">
           <div className="max-w-lg mx-auto space-y-2.5">
             {/* Selected Items Summary Pills */}
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
@@ -1284,12 +1497,12 @@ export const BuyerMode: React.FC<BuyerModeProps> = ({
               </div>
             ) : (
               <div className="flex items-center justify-between theme-bg-card p-2.5 rounded-2xl border border-amber-500/30 bg-amber-500/5">
-                <div className="text-[11px] font-semibold text-amber-500 flex items-center gap-1.5">
+                <div className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
                   <CreditCard className="w-3.5 h-3.5 shrink-0" />
                   <span>{lang === 'tl' ? 'Itatala sa iyong Utang Ledger' : 'Will log to your Utang Ledger'}</span>
                 </div>
                 <div className="text-right">
-                  <div className="text-base font-black text-amber-400">{formatPeso(totalAmount)}</div>
+                  <div className="text-base font-black text-amber-600 dark:text-amber-400">{formatPeso(totalAmount)}</div>
                 </div>
               </div>
             )}
@@ -1462,8 +1675,8 @@ export const BuyerMode: React.FC<BuyerModeProps> = ({
                 )}
 
                 {activeCatalog.purchaseMessage && (
-                  <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-500 mb-0.5">
+                  <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-xs">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 mb-0.5">
                       {lang === 'tl' ? 'Mensahe mula sa Tindahan' : 'Store Message'}
                     </div>
                     <div className="italic">“{activeCatalog.purchaseMessage}”</div>
@@ -1745,7 +1958,7 @@ export const BuyerMode: React.FC<BuyerModeProps> = ({
                     {lang === 'tl' ? 'Pumili ng variant na nais idagdag:' : 'Select a variant to add:'}
                   </p>
 
-                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                    <div className="space-y-2 max-h-60 overflow-y-auto no-scrollbar pr-1">
                       {variantModalProduct.variants?.map((v, idx) => {
                         const vKey = `${variantModalProduct.name}-${v.label}`;
                         const qty = cart[vKey]?.qty || 0;
@@ -1835,12 +2048,12 @@ export const BuyerMode: React.FC<BuyerModeProps> = ({
               </p>
 
               {/* Order QR Code Canvas with Unobstructed Pattern */}
-              <div className="relative p-4 bg-white rounded-3xl border-4 theme-border shadow-inner flex items-center justify-center mb-3 w-full max-w-[250px] aspect-square">
+              <div className="relative p-3.5 bg-white rounded-3xl border-4 theme-border shadow-inner flex items-center justify-center mb-3 w-full max-w-[270px] aspect-square">
                 <div className="relative w-full h-full flex items-center justify-center">
                   <QRCode
                     value={generatedOrderQr}
-                    size={220}
-                    level="H"
+                    size={240}
+                    level="M"
                     style={{ height: 'auto', maxWidth: '100%', width: '100%' }}
                   />
                 </div>
@@ -1884,8 +2097,8 @@ export const BuyerMode: React.FC<BuyerModeProps> = ({
 
               {/* STATUS INDICATOR: Waiting vs Confirmed */}
               {!isOrderConfirmedBySeller ? (
-                <div className="w-full flex items-center justify-center gap-2 px-3.5 py-2 rounded-2xl theme-bg-surface-subtle border theme-border-subtle text-amber-400 text-xs font-bold mb-4">
-                  <Clock className="w-4 h-4 shrink-0 text-amber-400" />
+                <div className="w-full flex items-center justify-center gap-2 px-3.5 py-2 rounded-2xl theme-bg-surface-subtle border theme-border-subtle text-amber-700 dark:text-amber-400 text-xs font-bold mb-4">
+                  <Clock className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
                   <span>
                     {syncSecondsLeft > 0
                       ? (lang === 'tl'
@@ -1897,8 +2110,8 @@ export const BuyerMode: React.FC<BuyerModeProps> = ({
                   </span>
                 </div>
               ) : (
-                <div className="w-full flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-xs font-black mb-4">
-                  <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-400" />
+                <div className="w-full flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-800 dark:text-emerald-300 text-xs font-black mb-4">
+                  <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
                   <span>
                     {lang === 'tl'
                       ? '✅ Na-scan at Na-confirm na ng Tindera!'
@@ -1908,7 +2121,7 @@ export const BuyerMode: React.FC<BuyerModeProps> = ({
               )}
 
               {/* CLEAN ORDER SUMMARY (No Crowded FormalReceipt inside modal) */}
-              <div className="w-full theme-bg-surface-subtle border theme-border rounded-2xl p-3.5 space-y-2 mb-4 text-left font-mono text-xs max-h-48 overflow-y-auto">
+              <div className="w-full theme-bg-surface-subtle border theme-border rounded-2xl p-3.5 space-y-2 mb-4 text-left font-mono text-xs max-h-48 overflow-y-auto no-scrollbar">
                 <div className="flex items-center justify-between border-b theme-border-subtle pb-1.5 font-bold theme-text-app">
                   <span className="flex items-center gap-1.5">
                     <ShoppingBag className="w-3.5 h-3.5 theme-text-accent" />
@@ -1943,7 +2156,7 @@ export const BuyerMode: React.FC<BuyerModeProps> = ({
                         <span>{lang === 'tl' ? 'Pera na Ibibigay:' : 'Cash Tendered:'}</span>
                         <span>{formatPeso(parseFloat(buyerCash))}</span>
                       </div>
-                      <div className="flex justify-between text-xs font-bold text-emerald-400">
+                      <div className="flex justify-between text-xs font-bold text-emerald-700 dark:text-emerald-400">
                         <span>{lang === 'tl' ? 'Inaasahang Sukli:' : 'Est. Change:'}</span>
                         <span>
                           {formatPeso(Math.max(0, parseFloat(buyerCash) - totalAmount))}
@@ -2092,14 +2305,26 @@ export const BuyerMode: React.FC<BuyerModeProps> = ({
       {/* 5. LIVE STORE QR CAMERA SCANNER */}
       <ScannerModal
         isOpen={isScannerOpen}
-        onClose={() => setIsScannerOpen(false)}
+        onClose={() => {
+          setIsScannerOpen(false);
+          setIsScanningStore(false);
+        }}
         onOpenAddItem={() => {}}
         scanType="qr_only"
         onScanSuccess={(detectedText) => {
           setIsScannerOpen(false);
+          setIsScanningStore(false);
           processStoreQrData(detectedText);
         }}
         lang={lang}
+      />
+
+      {/* 6. DEDICATED BUYER RECOMMENDATIONS MODAL */}
+      <BuyerRecommendationsModal
+        isOpen={isRecoModalOpen}
+        onClose={handleCloseBuyerReco}
+        lang={lang}
+        onOpenActivityUtang={onOpenActivityUtang}
       />
     </div>
   );

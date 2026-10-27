@@ -254,6 +254,7 @@ export const translations: Record<LanguageCode, Record<string, string>> = {
     section_general: 'GENERAL',
     section_store: 'STORE INFORMATION',
     section_data: 'DATA MANAGEMENT',
+    section_security: 'SECURITY',
     section_help: 'HELP & TUTORIALS',
     section_about: 'ABOUT',
 
@@ -362,6 +363,16 @@ export const translations: Record<LanguageCode, Record<string, string>> = {
     about_version: 'Version 1.0.0',
     about_app_id: 'App ID: com.tindahanNotes.app',
     about_desc: 'Tinda is a dedicated offline-first store notebook engineered for Sari-Sari stores and small retail businesses. Keep all your records private, fast, and secure right on your device.',
+
+    // Developer Profile
+    dev_modal_title: 'Meet the Developer',
+    dev_name: 'Michael',
+    dev_message: 'Thank you all for using my application project dedicated to sari-sari stores. If this app has helped your daily business, any support is deeply appreciated and helps keep the app running and improving!',
+    dev_github: 'Visit my GitHub',
+    dev_support_title: 'Support the Project',
+    dev_support_msg: 'If you want to support me and keep me fired up to improve the app, here is my GCash account. Thank you!',
+    dev_copy_gcash: 'Copy GCash',
+    dev_copied: 'Copied!',
 
     // Interactive Guided Tour Steps
     tut_step1_welcome_title: 'Welcome to Tinda',
@@ -648,6 +659,7 @@ export const translations: Record<LanguageCode, Record<string, string>> = {
     section_general: 'PANGKALAHATAN',
     section_store: 'IMPORMASYON NG TINDAHAN',
     section_data: 'PAMAMAHALA NG DATA',
+    section_security: 'SEGURIDAD',
     section_help: 'TULONG AT GABAY',
     section_about: 'TUNGKOL SA APP',
 
@@ -756,6 +768,16 @@ export const translations: Record<LanguageCode, Record<string, string>> = {
     about_version: 'Bersyon 1.0.0',
     about_app_id: 'App ID: com.tindahanNotes.app',
     about_desc: 'Ang Tinda ay isang offline notebook para sa mga Sari-Sari store sa Pilipinas.',
+
+    // Developer Profile
+    dev_modal_title: 'Kilalanin ang Developer',
+    dev_name: 'Michael',
+    dev_message: 'Salamat sa paggamit ng aking app na ginawa para sa mga sari-sari store. Kung nakatulong ito sa inyong negosyo, malaking bagay ang inyong suporta upang mapanatili at mapaganda pa ang app!',
+    dev_github: 'Bisitahin ang aking GitHub',
+    dev_support_title: 'Suportahan ang Proyekto',
+    dev_support_msg: 'Kung gusto niyo akong suportahan at bigyan ng inspirasyon na pagandahin pa ang app, narito ang aking GCash account. Maraming salamat!',
+    dev_copy_gcash: 'Kopyahin ang GCash',
+    dev_copied: 'Nakopya!',
 
     // Tutorial Steps
     tut_step1_welcome_title: 'Maligayang Pagdating sa Tinda',

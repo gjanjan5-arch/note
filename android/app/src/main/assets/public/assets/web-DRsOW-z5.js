@@ -1,0 +1,1 @@
+import{W as e,C as t,E as n}from"./index-CH4KAOS8.js";class s extends e{async processImage(i){throw this.createUnimplementedException()}createUnimplementedException(){return new t("This method is not implemented on web.",n.Unimplemented)}}export{s as TextRecognitionWeb};

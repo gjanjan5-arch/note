@@ -11,6 +11,9 @@ export interface StoreProfile {
   gcashNumber?: string;
   purchaseMessage?: string;
   offlineText?: string;
+  logoAssetId?: number;
+  receiptLogoAssetId?: number;
+  manualBottomOffset?: number;
 }
 
 const STORE_PROFILE_KEY = 'tindahan_store_profile';

@@ -18,6 +18,10 @@ export interface Transaction {
   totalAmount: number;
   rawNote: string;
   notes?: string;
+  paymentMethod?: 'CASH' | 'GCASH' | 'DIGITAL';
+  paymentRefNumber?: string | null;
+  cashTendered?: number | null;
+  changeAmount?: number | null;
   syncStatus: 'LOCAL' | 'SYNCED';
 }
 
@@ -118,11 +122,13 @@ export interface CatalogPayload {
   gcashNumber?: string;
   purchaseMessage?: string;
   offlineText?: string;
+  icon?: string; // Icon identifier (emoji or base64)
   // New fields for enhanced QR broadcast
   g?: string; // GCash
   p?: string; // Phone
   loc?: string; // Location
   m?: string; // Greeting
+  i?: string; // Icon
   ts: number;
   items: CatalogItem[];
   page?: number;

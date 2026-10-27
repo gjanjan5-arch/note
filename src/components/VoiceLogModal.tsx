@@ -21,6 +21,7 @@ import type { Transaction, Note, InventoryItem, InventoryVariant } from '../type
 import { formatPeso, getLocalDateStr } from '../utils/formatters';
 import { translate, type LanguageCode } from '../utils/i18n';
 import { playScanBeep } from '../utils/audioBeep';
+import { useBodyScrollLock } from '../utils/scrollLock';
 import {
   ensureMicrophonePermission,
   openMicrophoneSettings,
@@ -144,22 +145,8 @@ export const VoiceLogModal: React.FC<VoiceLogModalProps> = ({
   // Inventory cache for smart product & variant matching
   const inventoryRef = useRef<InventoryItem[]>([]);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    const originalOverflow = document.body.style.overflow;
-    const originalTouchAction = document.body.style.touchAction;
-    const originalOverscroll = document.body.style.overscrollBehavior;
-
-    document.body.style.overflow = 'hidden';
-    document.body.style.touchAction = 'none';
-    document.body.style.overscrollBehavior = 'none';
-
-    return () => {
-      document.body.style.overflow = originalOverflow;
-      document.body.style.touchAction = originalTouchAction;
-      document.body.style.overscrollBehavior = originalOverscroll || '';
-    };
-  }, [isOpen]);
+  // Prevent background scrolling while open with centralized leak-proof lock
+  useBodyScrollLock(isOpen);
   const draftItemsRef = useRef<VoiceDraftItem[]>([]);
   const selectionModalRef = useRef<SelectionModalState | null>(null);
 
@@ -726,7 +713,7 @@ export const VoiceLogModal: React.FC<VoiceLogModalProps> = ({
   return (
     <AnimatePresence>
       <div 
-        className="fixed inset-0 z-50 overflow-y-auto overscroll-contain p-2 sm:p-4 md:p-6 bg-black/65 backdrop-blur-xs flex flex-col items-center justify-start sm:justify-center min-h-full touch-manipulation animate-in fade-in duration-200"
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] touch-manipulation animate-in fade-in duration-200"
         onClick={onClose}
       >
         <motion.div
@@ -734,7 +721,7 @@ export const VoiceLogModal: React.FC<VoiceLogModalProps> = ({
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.96 }}
           transition={{ duration: 0.15 }}
-          className="my-auto w-full max-w-lg md:max-w-3xl theme-bg-card rounded-3xl border theme-border shadow-2xl overflow-hidden flex flex-col relative"
+          className="my-auto w-full max-w-lg md:max-w-3xl max-h-[85vh] theme-bg-card rounded-3xl border theme-border shadow-2xl overflow-hidden flex flex-col relative animate-in fade-in duration-200"
           onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}
         >
           {/* Header */}
@@ -919,7 +906,7 @@ export const VoiceLogModal: React.FC<VoiceLogModalProps> = ({
                       </p>
                     </div>
                   ) : (
-                    <div className="space-y-2 max-h-60 md:max-h-72 overflow-y-auto pr-1">
+                    <div className="space-y-2 max-h-60 md:max-h-72 overflow-y-auto no-scrollbar pr-1">
                       {draftItems.map((item) => (
                         <div
                           key={item.id}
@@ -1045,7 +1032,7 @@ export const VoiceLogModal: React.FC<VoiceLogModalProps> = ({
                   </div>
 
                   {/* List of Matched Items/Variants */}
-                  <div className="space-y-2 overflow-y-auto max-h-48 mb-4">
+                  <div className="space-y-2 overflow-y-auto no-scrollbar max-h-48 mb-4">
                     {selectionModal.candidates.map((c, idx) => (
                       <button
                         key={`${c.item.id}-${c.variant?.label || idx}`}

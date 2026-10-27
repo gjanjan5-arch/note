@@ -22,6 +22,8 @@ import type { LanguageCode } from '../utils/i18n';
 import { formatPeso, formatDateTime } from '../utils/formatters';
 import type { Transaction } from '../types';
 import { FormalReceipt } from './FormalReceipt';
+import { useExplorationTutorial } from '../context/ExplorationTutorialContext';
+import { useBodyScrollLock } from '../utils/scrollLock';
 import {
   getBuyerUtangs,
   getBuyerReceipts,
@@ -50,23 +52,27 @@ export const MyActivityUtangModal: React.FC<MyActivityUtangModalProps> = ({
   const [selectedReceiptForQr, setSelectedReceiptForQr] = useState<BuyerDigitalReceipt | null>(null);
 
   const isTl = lang === 'tl';
+  const { triggerTip } = useExplorationTutorial();
 
   useEffect(() => {
-    if (!isOpen) return;
-    const originalOverflow = document.body.style.overflow;
-    const originalTouchAction = document.body.style.touchAction;
-    const originalOverscroll = document.body.style.overscrollBehavior;
+    if (isOpen) {
+      triggerTip({
+        id: 'buyer_my_utang',
+        icon: Receipt,
+        title: {
+          tl: 'Aking Talaan at Utang',
+          en: 'Personal Credit & Receipts',
+        },
+        desc: {
+          tl: 'Maaaring silipin ng suki ang kanyang kasalukuyang utang at mga nakaraang resibo para transparent ang transaksyon.',
+          en: 'Customers can transparently inspect their personal debt balance and past receipts.',
+        },
+      });
+    }
+  }, [isOpen, triggerTip]);
 
-    document.body.style.overflow = 'hidden';
-    document.body.style.touchAction = 'none';
-    document.body.style.overscrollBehavior = 'none';
-
-    return () => {
-      document.body.style.overflow = originalOverflow;
-      document.body.style.touchAction = originalTouchAction;
-      document.body.style.overscrollBehavior = originalOverscroll || '';
-    };
-  }, [isOpen]);
+  // Prevent background scrolling while open with centralized leak-proof lock
+  useBodyScrollLock(isOpen);
 
   // Load utangs and receipts when modal opens & register Escape key listener
   useEffect(() => {
@@ -146,16 +152,13 @@ export const MyActivityUtangModal: React.FC<MyActivityUtangModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto overscroll-contain p-2 sm:p-4 md:p-6 flex flex-col items-center justify-start sm:justify-center min-h-full animate-in fade-in duration-150">
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/75 backdrop-blur-xs transition-opacity duration-150 cursor-pointer"
-        onClick={onClose}
-      />
-
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] animate-in fade-in duration-200"
+      onClick={onClose}
+    >
       {/* Modal Container */}
       <div
-        className="my-auto relative w-full max-w-xl md:max-w-3xl flex flex-col theme-bg-card rounded-3xl border theme-border shadow-2xl z-10 overflow-hidden"
+        className="theme-card max-w-xl md:max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden rounded-3xl animate-in fade-in duration-200"
         onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -187,7 +190,7 @@ export const MyActivityUtangModal: React.FC<MyActivityUtangModalProps> = ({
         </div>
 
         {/* Total Outstanding Utang Summary Card */}
-        <div className="p-4 sm:p-5 pb-3">
+        <div className="p-4 sm:p-5 pb-3 shrink-0">
           <div className="p-4 rounded-3xl theme-bg-surface-subtle border theme-border flex items-center justify-between gap-4 shadow-inner">
             <div>
               <div className="text-[11px] font-bold uppercase tracking-wider theme-text-secondary flex items-center gap-1.5">
@@ -247,7 +250,7 @@ export const MyActivityUtangModal: React.FC<MyActivityUtangModalProps> = ({
         </div>
 
         {/* Scrollable Content Body */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3">
+        <div className="flex-1 overflow-y-auto no-scrollbar p-4 sm:p-5 space-y-3">
           {activeTab === 'UTANG' && (
             <div className="space-y-3">
               {storeUtangs.length === 0 ? (

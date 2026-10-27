@@ -6,7 +6,6 @@ import {
   CreditCard,
   Package,
   TrendingUp,
-  Bot,
 } from 'lucide-react';
 import { db, initializeDatabase } from './db/db';
 import { Header } from './components/Header';
@@ -14,12 +13,10 @@ import { TransactionLedger } from './components/TransactionLedger';
 import { PautangLedger } from './components/PautangLedger';
 import { InventoryManager } from './components/InventoryManager';
 import { StoreAnalytics } from './components/StoreAnalytics';
-import { SukiChatbot } from './components/SukiChatbot';
 import { SettingsModal } from './components/SettingsModal';
-import { GuidedTutorial } from './components/GuidedTutorial';
 import { PullToRefresh } from './components/PullToRefresh';
-import { QuickNoteFab } from './components/QuickNoteFab';
 import { QuickNoteComposer } from './components/QuickNoteComposer';
+import { QuickNoteFab } from './components/QuickNoteFab';
 import { ExpiringNoteBanner } from './components/ExpiringNoteBanner';
 import { ScannerModal } from './components/ScannerModal';
 import { PalengkeChecklistModal } from './components/PalengkeChecklistModal';
@@ -32,6 +29,7 @@ import { ModeSelectionScreen } from './components/ModeSelectionScreen';
 import { SideDrawer } from './components/SideDrawer';
 import { GlobalSearch } from './components/GlobalSearch';
 import { MyActivityUtangModal } from './components/MyActivityUtangModal';
+import { RecommendationsModal } from './components/RecommendationsModal';
 import {
   getActiveLanguage,
   setActiveLanguageStorage,
@@ -40,15 +38,17 @@ import {
 } from './utils/i18n';
 import {
   getStoreProfile,
-  isTutorialCompleted,
   type StoreProfile,
 } from './utils/storeSettings';
 import type { CatalogPayload } from "./types";
 import { triggerAutoBackupIfEnabled } from './utils/backupManager';
 import { ThemeProvider } from './context/ThemeContext';
+import { PerformanceProvider } from './context/PerformanceContext';
+import { ExplorationTutorialProvider } from './context/ExplorationTutorialContext';
 import { safeStorage } from './utils/safeStorage';
+import { useScrollNavigation } from './hooks/useScrollNavigation';
 
-const TAB_ORDER = ['LISTA', 'PAUTANG', 'PANINDA', 'ANALYTICS', 'SUKI_AI'] as const;
+const TAB_ORDER = ['LISTA', 'PAUTANG', 'PANINDA', 'ANALYTICS'] as const;
 type TabId = (typeof TAB_ORDER)[number];
 
 const MODE_SELECTION_KEY = 'tindahan_mode_selected';
@@ -81,11 +81,15 @@ function AppContent() {
     return safeStorage.getItem(MODE_SELECTION_KEY) === 'true';
   });
   const [appMode, setAppMode] = useState<'seller' | 'buyer'>(() => {
-    return (safeStorage.getItem('appMode') as 'seller' | 'buyer') || 'seller';
+    const saved = safeStorage.getItem('appMode') as 'seller' | 'buyer';
+    return saved === 'buyer' ? 'buyer' : 'seller';
   });
   const [isStoreQROpen, setIsStoreQROpen] = useState(false);
+  const [isRecommendationsOpen, setIsRecommendationsOpen] = useState(false);
+  const [isBuyerRecommendationsOpen, setIsBuyerRecommendationsOpen] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [scannedOrderPayload, setScannedOrderPayload] = useState<BuyerOrderPayload | null>(null);
+  const { isNavVisible } = useScrollNavigation();
 
   const handleInitialModeSelect = (mode: 'seller' | 'buyer') => {
     setAppMode(mode);
@@ -120,7 +124,6 @@ function AppContent() {
   const [storeProfile, setStoreProfile] = useState<StoreProfile>(() => getStoreProfile());
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<'GENERAL' | 'STORE' | 'DATA' | 'HELP' | 'ABOUT'>('GENERAL');
-  const [isTutorialOpen, setIsTutorialOpen] = useState(() => !isTutorialCompleted());
   const [isQuickNoteOpen, setIsQuickNoteOpen] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isPalengkeOpen, setIsPalengkeOpen] = useState(false);
@@ -248,6 +251,7 @@ function AppContent() {
     try {
       setStoreProfile(getStoreProfile());
       triggerAutoBackupIfEnabled();
+      // triggerSync();
     } catch (err) {
       console.warn('[App] Refresh error:', err);
     }
@@ -271,8 +275,6 @@ function AppContent() {
         } else if (isSettingsOpen) {
           setIsSettingsOpen(false);
           setStoreProfile(getStoreProfile());
-        } else if (isTutorialOpen) {
-          setIsTutorialOpen(false);
         } else if (isQuickNoteOpen) {
           setIsQuickNoteOpen(false);
         } else if (isScannerOpen) {
@@ -296,7 +298,6 @@ function AppContent() {
     isSearchOpen,
     isDrawerOpen,
     isSettingsOpen,
-    isTutorialOpen,
     isQuickNoteOpen,
     isScannerOpen,
     isPalengkeOpen,
@@ -309,23 +310,28 @@ function AppContent() {
   }
 
   return (
-    <div className="min-h-screen theme-bg-app theme-text-app font-sans antialiased transition-colors duration-200">
-      {appMode === 'buyer' ? (
-        <BuyerMode
-          lang={lang}
-          onSwitchToSeller={() => handleSwitchMode('seller')}
-          onOpenMenu={() => setIsDrawerOpen(true)}
-          onOpenSearch={() => setIsSearchOpen(true)}
-          onOpenActivityUtang={() => setIsActivityUtangOpen(true)}
-          selectedStoreFromSearch={selectedStoreFromSearch}
-          onClearSelectedStoreFromSearch={() => setSelectedStoreFromSearch(null)}
-          scanStoreRequested={scanStoreRequested}
-          onResetScanStoreRequest={() => setScanStoreRequested(false)}
-          scannedStoreRaw={scannedStoreRaw}
-          onClearScannedStoreRaw={() => setScannedStoreRaw(null)}
-        />
-      ) : (
-        <div className="pb-24 md:pb-12">
+    <ExplorationTutorialProvider lang={lang}>
+      <div className="min-h-screen flex flex-col theme-bg-app theme-text-app font-sans antialiased transition-colors duration-200">
+        {appMode === 'buyer' ? (
+          <BuyerMode
+            lang={lang}
+            isMenuOpen={isDrawerOpen}
+            onSwitchToSeller={() => handleSwitchMode('seller')}
+            onOpenMenu={() => setIsDrawerOpen(true)}
+            onOpenSearch={() => setIsSearchOpen(true)}
+            onOpenActivityUtang={() => setIsActivityUtangOpen(true)}
+            isBuyerRecommendationsOpen={isBuyerRecommendationsOpen}
+            onOpenBuyerRecommendations={() => setIsBuyerRecommendationsOpen(true)}
+            onCloseBuyerRecommendations={() => setIsBuyerRecommendationsOpen(false)}
+            selectedStoreFromSearch={selectedStoreFromSearch}
+            onClearSelectedStoreFromSearch={() => setSelectedStoreFromSearch(null)}
+            scanStoreRequested={scanStoreRequested}
+            onResetScanStoreRequest={() => setScanStoreRequested(false)}
+            scannedStoreRaw={scannedStoreRaw}
+            onClearScannedStoreRaw={() => setScannedStoreRaw(null)}
+          />
+        ) : (
+        <div className="flex-1 flex flex-col w-full">
           {/* Floating 5-Minute Expiring Quick Note Alert Banner */}
           <ExpiringNoteBanner lang={lang} onOpenQuickNotes={() => setIsQuickNoteOpen(true)} />
 
@@ -334,53 +340,16 @@ function AppContent() {
             storeProfile={storeProfile}
             lang={lang}
             appMode={appMode}
+            isNavVisible={isNavVisible}
+            isMenuOpen={isDrawerOpen}
             onOpenMenu={() => setIsDrawerOpen(true)}
             onOpenSearch={() => setIsSearchOpen(true)}
           />
 
       <PullToRefresh onRefresh={handleRefresh} lang={lang}>
-        <main className="w-full max-w-7xl 2xl:max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8 pt-2.5 sm:pt-4 pb-24 landscape:pb-20 md:pb-8 overflow-x-clip">
-          {/* Desktop & Tablet Navigation Tabs */}
-          <div className="hidden md:flex items-center gap-1.5 theme-bg-card p-1.5 rounded-3xl shadow-2xs border theme-border mb-5">
-            {[
-              { id: 'LISTA', label: translate(lang, 'nav_lista'), icon: Notebook },
-              {
-                id: 'PAUTANG',
-                label: `${translate(lang, 'nav_pautang')} (${
-                  customers.filter((c) => c.currentBalance > 0).length
-                })`,
-                icon: CreditCard,
-              },
-              {
-                id: 'PANINDA',
-                label: `${translate(lang, 'nav_paninda')} (${inventory.length})`,
-                icon: Package,
-              },
-              { id: 'ANALYTICS', label: translate(lang, 'nav_kikita'), icon: TrendingUp },
-              { id: 'SUKI_AI', label: translate(lang, 'nav_suki_ai'), icon: Bot },
-            ].map((tab) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  id={`nav-${tab.id.toLowerCase()}-tab`}
-                  onClick={() => handleTabChange(tab.id as TabId)}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-2xl text-xs font-black transition-all duration-150 active:scale-95 cursor-pointer select-none ${
-                    isActive
-                      ? 'theme-bg-primary text-white shadow-2xs border border-white/10'
-                      : 'theme-text-secondary hover:theme-text-app hover:theme-bg-surface-subtle'
-                  }`}
-                >
-                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'theme-text-secondary'}`} />
-                  <span className="truncate">{tab.label}</span>
-                </button>
-              );
-            })}
-          </div>
-
+        <main className="flex-1 w-full max-w-7xl 2xl:max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8 pt-2.5 sm:pt-4 pb-[calc(7.5rem+var(--safe-nav-pb))]">
           {/* Active Tab View Content with Directional Transitions */}
-          <div className="relative min-h-[350px]">
+          <div className="relative min-h-[350px] w-full overflow-x-auto">
             <AnimatePresence mode="wait" custom={direction} initial={false}>
               <motion.div
                 key={activeTab}
@@ -391,105 +360,97 @@ function AppContent() {
                 exit="exit"
                 className="w-full"
               >
-                {activeTab === 'LISTA' && (
-                  <TransactionLedger
-                    transactions={transactions}
-                    lang={lang}
-                    onRefresh={handleRefresh}
-                    prefillTransactionId={receiptActionPrefill}
-                    onClearPrefillTransactionId={() => setReceiptActionPrefill(null)}
-                  />
-                )}
-                {activeTab === 'PAUTANG' && (
-                  <PautangLedger
-                    customers={customers}
-                    transactions={transactions}
-                    lang={lang}
-                    onRefresh={handleRefresh}
-                    prefillAction={customerActionPrefill}
-                    onClearPrefillAction={() => setCustomerActionPrefill(null)}
-                  />
-                )}
-                {activeTab === 'PANINDA' && (
-                  <InventoryManager
-                    inventory={inventory}
-                    lang={lang}
-                    onRefresh={handleRefresh}
-                    openAddModalPrefill={inventoryPrefill}
-                    onClearAddModalPrefill={() => setInventoryPrefill(null)}
-                    prefillAction={productActionPrefill}
-                    onClearPrefillAction={() => setProductActionPrefill(null)}
-                  />
-                )}
-                {activeTab === 'ANALYTICS' && (
-                  <StoreAnalytics
-                    transactions={transactions}
-                    inventory={inventory}
-                    customers={customers}
-                    lang={lang}
-                  />
-                )}
-                {activeTab === 'SUKI_AI' && <SukiChatbot isOnline={isOnline} lang={lang} />}
+                {
+                  <>
+                    {activeTab === 'LISTA' && (
+                      <TransactionLedger
+                        transactions={transactions}
+                        lang={lang}
+                        onRefresh={handleRefresh}
+                        prefillTransactionId={receiptActionPrefill}
+                        onClearPrefillTransactionId={() => setReceiptActionPrefill(null)}
+                      />
+                    )}
+                    {activeTab === 'PAUTANG' && (
+                      <PautangLedger
+                        customers={customers}
+                        transactions={transactions}
+                        lang={lang}
+                        onRefresh={handleRefresh}
+                        prefillAction={customerActionPrefill}
+                        onClearPrefillAction={() => setCustomerActionPrefill(null)}
+                      />
+                    )}
+                    {activeTab === 'PANINDA' && (
+                      <InventoryManager
+                        inventory={inventory}
+                        lang={lang}
+                        onRefresh={handleRefresh}
+                        openAddModalPrefill={inventoryPrefill}
+                        onClearAddModalPrefill={() => setInventoryPrefill(null)}
+                        prefillAction={productActionPrefill}
+                        onClearPrefillAction={() => setProductActionPrefill(null)}
+                        onOpenRecommendations={() => setIsRecommendationsOpen(true)}
+                      />
+                    )}
+                    {activeTab === 'ANALYTICS' && (
+                      <StoreAnalytics
+                        transactions={transactions}
+                        inventory={inventory}
+                        customers={customers}
+                        lang={lang}
+                      />
+                    )}
+                  </>
+                }
               </motion.div>
             </AnimatePresence>
           </div>
         </main>
       </PullToRefresh>
 
-      {/* Mobile Bottom Navigation Bar */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 theme-bg-nav backdrop-blur-md border-t theme-border z-40 px-2 pt-1 safe-pb-nav landscape:py-0.5 shadow-2xl">
-        <div className="grid grid-cols-5 gap-1 max-w-lg mx-auto text-center items-center">
-          {[
-            { id: 'LISTA', label: translate(lang, 'nav_lista'), icon: Notebook },
-            { id: 'PAUTANG', label: translate(lang, 'nav_pautang'), icon: CreditCard },
-            { id: 'PANINDA', label: translate(lang, 'nav_paninda'), icon: Package },
-            { id: 'ANALYTICS', label: translate(lang, 'nav_kikita'), icon: TrendingUp },
-            { id: 'SUKI_AI', label: translate(lang, 'nav_suki_ai'), icon: Bot },
-          ].map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                id={`mobile-nav-${tab.id.toLowerCase()}-tab`}
-                onClick={() => handleTabChange(tab.id as TabId)}
-                className={`flex flex-col items-center justify-center py-1.5 landscape:py-1 px-1 rounded-xl sm:rounded-2xl transition-all duration-150 active:scale-95 cursor-pointer select-none ${
-                  isActive
-                    ? 'theme-bg-primary text-white font-black shadow-xs'
-                    : 'theme-text-secondary hover:theme-text-app hover:theme-bg-surface-subtle'
-                }`}
-              >
-                <Icon
-                  className={`w-4 h-4 sm:w-5 sm:h-5 shrink-0 transition-transform ${
-                    isActive ? 'text-white scale-105' : 'theme-text-secondary'
-                  }`}
-                />
-                <span
-                  className={`text-[10px] landscape:text-[9px] truncate max-w-[58px] mt-0.5 leading-tight ${
-                    isActive ? 'text-white font-black' : 'font-semibold theme-text-secondary'
+      {/* Primary Navigation Dock (Seller Mode) */}
+      {appMode === 'seller' && (
+        <nav className={`dock-container fixed bottom-[var(--dock-bottom)] left-1/2 -translate-x-1/2 z-40 theme-bg-nav/80 backdrop-blur-md border theme-border rounded-full px-4 py-2 shadow-2xl transition-transform duration-300 ease-in-out w-max max-w-[calc(100vw-1rem)] ${
+          isNavVisible ? 'translate-y-0 pointer-events-auto' : 'translate-y-28 pointer-events-none'
+        }`}>
+          <div className="dock-nav flex items-center gap-4">
+            {[
+              { id: 'LISTA', label: translate(lang, 'nav_lista'), icon: Notebook },
+              { id: 'PAUTANG', label: translate(lang, 'nav_pautang'), icon: CreditCard },
+              { id: 'PANINDA', label: translate(lang, 'nav_paninda'), icon: Package },
+              { id: 'ANALYTICS', label: translate(lang, 'nav_kikita'), icon: TrendingUp },
+            ].map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  id={`mobile-nav-${tab.id.toLowerCase()}-tab`}
+                  onClick={() => handleTabChange(tab.id as TabId)}
+                  className={`dock-tab-btn flex flex-col items-center justify-center py-2 landscape:py-1 px-1 min-h-[48px] min-w-[48px] rounded-xl sm:rounded-2xl transition-all duration-150 active:scale-95 cursor-pointer select-none ${
+                    isActive
+                      ? 'theme-bg-primary text-white font-black shadow-xs'
+                      : 'theme-text-secondary hover:theme-text-app hover:theme-bg-surface-subtle'
                   }`}
                 >
-                  {tab.label}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </nav>
-
-      {/* Floating Action Button for Tools Hub & Quick Actions */}
-      {!isSettingsOpen && !isScannerOpen && !isPalengkeOpen && !isVoiceLogOpen && !isDailyRemitOpen && (
-        <QuickNoteFab
-          onOpenQuickNote={() => setIsQuickNoteOpen(true)}
-          onClick={() => setIsQuickNoteOpen(true)}
-          onOpenScanner={() => setIsScannerOpen(true)}
-          onOpenPalengke={() => setIsPalengkeOpen(true)}
-          onOpenVoiceLog={() => setIsVoiceLogOpen(true)}
-          onOpenDailyRemit={() => setIsDailyRemitOpen(true)}
-          onOpenStoreQR={() => setIsStoreQROpen(true)}
-          lang={lang}
-          activeTab={activeTab}
-        />
+                  <Icon
+                    className={`w-4 h-4 sm:w-5 sm:h-5 shrink-0 transition-transform ${
+                      isActive ? 'text-white scale-105' : 'theme-text-secondary'
+                    }`}
+                  />
+                  <span
+                    className={`dock-tab-label text-[10px] landscape:text-[9px] truncate max-w-full px-0.5 mt-0.5 leading-tight ${
+                      isActive ? 'text-white font-black' : 'font-semibold theme-text-secondary'
+                    }`}
+                  >
+                    {tab.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </nav>
       )}
 
       {/* 1. Talaan sa Palengke & Restock Checklist Modal */}
@@ -545,6 +506,14 @@ function AppContent() {
         lang={lang}
       />
 
+      {/* Recommendations Modal */}
+      <RecommendationsModal
+        isOpen={isRecommendationsOpen}
+        onClose={() => setIsRecommendationsOpen(false)}
+        lang={lang}
+        onNavigateToInventory={() => setActiveTab('PANINDA')}
+      />
+
       {/* Seller Scan -> Buyer Order Checkout Processing Modal */}
       <BuyerOrderModal
         isOpen={!!scannedOrderPayload}
@@ -564,10 +533,23 @@ function AppContent() {
         onSaved={handleRefresh}
         lang={lang}
       />
+      
+      {/* Quick Access Floating Tool */}
+      <QuickNoteFab
+        lang={lang}
+        isNavVisible={isNavVisible}
+        activeTab={activeTab}
+        onOpenQuickNote={() => setIsQuickNoteOpen(true)}
+        onOpenScanner={() => setIsScannerOpen(true)}
+        onOpenPalengke={() => setIsPalengkeOpen(true)}
+        onOpenVoiceLog={() => setIsVoiceLogOpen(true)}
+        onOpenDailyRemit={() => setIsDailyRemitOpen(true)}
+        onOpenStoreQR={() => setIsStoreQROpen(true)}
+      />
         </div>
       )}
 
-      {/* Side Navigation Drawer (Persistent across Seller & Buyer modes) */}
+      {/* Side Navigation Drawer (Persistent across Seller, Owner, and Buyer modes) */}
       <SideDrawer
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
@@ -578,12 +560,32 @@ function AppContent() {
         onOpenSettings={(tab = 'GENERAL') => {
           setSettingsInitialTab(tab);
           setIsSettingsOpen(true);
+          setIsDrawerOpen(false);
         }}
         onOpenStoreQR={() => setIsStoreQROpen(true)}
-        onStartTutorial={() => setIsTutorialOpen(true)}
         onOpenSavedStores={() => setSelectedStoreFromSearch(null)}
         onOpenActivityUtang={() => setIsActivityUtangOpen(true)}
-        onOpenScanQR={() => setScanStoreRequested(true)}
+        onOpenScanQR={() => {
+          setIsDrawerOpen(false);
+          if (appMode === 'buyer') {
+            setScanStoreRequested(true);
+          } else {
+            setIsScannerOpen(true);
+          }
+        }}
+        onOpenQuickNote={() => {
+          setIsDrawerOpen(false);
+          setIsQuickNoteOpen(true);
+        }}
+        onOpenRecommendations={() => {
+          setIsDrawerOpen(false);
+          if (appMode === 'buyer') {
+            setIsBuyerRecommendationsOpen(true);
+          } else {
+            setIsRecommendationsOpen(true);
+          }
+        }}
+        isOnline={isOnline}
       />
 
       {/* Settings Modal (Theme, Language, Store Profile, Data Backup, Tutorial Reset) */}
@@ -598,23 +600,11 @@ function AppContent() {
         onSwitchMode={handleSwitchMode}
         initialTab={settingsInitialTab}
         onLanguageChange={handleLanguageChange}
-        onStartTutorial={() => {
-          setIsSettingsOpen(false);
-          setIsTutorialOpen(true);
-        }}
         onDataChanged={handleRefresh}
         onOpenStoreQR={() => {
           setIsSettingsOpen(false);
           setIsStoreQROpen(true);
         }}
-      />
-
-      {/* Guided First-Launch & Help Interactive Tour */}
-      <GuidedTutorial
-        isOpen={isTutorialOpen}
-        onClose={() => setIsTutorialOpen(false)}
-        lang={lang}
-        onTabChange={setActiveTab}
       />
 
       {/* Global 100% Offline Search Engine Modal (Cmd+K / Ctrl+K) */}
@@ -661,13 +651,16 @@ function AppContent() {
         lang={lang}
       />
     </div>
+    </ExplorationTutorialProvider>
   );
 }
 
 export default function App() {
   return (
     <ThemeProvider>
-      <AppContent />
+      <PerformanceProvider>
+        <AppContent />
+      </PerformanceProvider>
     </ThemeProvider>
   );
 }

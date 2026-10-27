@@ -3,11 +3,17 @@ import type { Transaction, Customer, InventoryItem, Note, TransactionType } from
 import { getStoreProfile, saveStoreProfile, type StoreProfile } from '../utils/storeSettings';
 import { getLocalDateStr } from '../utils/formatters';
 
+export interface StoreAsset {
+  id?: number;
+  data: Blob;
+}
+
 export class TindahanDatabase extends Dexie {
   transactions!: Table<Transaction>;
   customers!: Table<Customer>;
   inventory!: Table<InventoryItem>;
   notes!: Table<Note>;
+  storeAssets!: Table<StoreAsset>;
 
   constructor() {
     super('TindahanNotesDB');
@@ -58,6 +64,32 @@ export class TindahanDatabase extends Dexie {
       customers: '++id, &name, currentBalance, lastTransactionAt',
       inventory: '++id, &name, category, stock, sku',
       notes: '++id, createdAt, updatedAt, autoDelete, expiresAt',
+    });
+
+    // Version 5: Make SKU a unique index for bulletproof code-based idempotency (Code = SKU)
+    this.version(5).stores({
+      transactions: '++id, timestamp, dateStr, type, customerName, syncStatus',
+      customers: '++id, &name, currentBalance, lastTransactionAt',
+      inventory: '++id, &name, category, stock, &sku',
+      notes: '++id, createdAt, updatedAt, autoDelete, expiresAt',
+    });
+    
+    // Version 6: Add storeAssets table for logo storage
+    this.version(6).stores({
+      transactions: '++id, timestamp, dateStr, type, customerName, syncStatus',
+      customers: '++id, &name, currentBalance, lastTransactionAt',
+      inventory: '++id, &name, category, stock, &sku',
+      notes: '++id, createdAt, updatedAt, autoDelete, expiresAt',
+      storeAssets: '++id',
+    });
+
+    // Version 7: Relax sku unique constraint (&sku -> sku) to prevent ConstraintError on empty/blank strings while preserving non-destructive schema migration
+    this.version(7).stores({
+      transactions: '++id, timestamp, dateStr, type, customerName, syncStatus',
+      customers: '++id, &name, currentBalance, lastTransactionAt',
+      inventory: '++id, &name, category, stock, sku',
+      notes: '++id, createdAt, updatedAt, autoDelete, expiresAt',
+      storeAssets: '++id',
     });
   }
 }

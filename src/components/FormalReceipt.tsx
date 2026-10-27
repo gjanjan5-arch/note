@@ -1,10 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Printer, Share2, X, Receipt, Download } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
 import type { Transaction } from '../types';
 import { formatDateTime, formatPeso, formatDisplayItemName } from '../utils/formatters';
 import { getStoreProfile } from '../utils/storeSettings';
 import { translate, type LanguageCode } from '../utils/i18n';
 import { saveModalToGalleryAsPng } from '../utils/modalGalleryExport';
+import { useExplorationTutorial } from '../context/ExplorationTutorialContext';
+import { StoreLogoDisplay } from './StoreLogoDisplay';
+import { useBodyScrollLock } from '../utils/scrollLock';
 
 interface FormalReceiptProps {
   transaction: Transaction;
@@ -73,6 +77,9 @@ export const FormalReceipt: React.FC<FormalReceiptProps> = ({
 
   const getPaymentMethodLabel = () => {
     if (overridePaymentMethod) return overridePaymentMethod;
+    if (transaction.paymentMethod === 'CASH') {
+      return lang === 'tl' ? '💵 Kaliwaan / Cash' : '💵 Cash';
+    }
     switch (transaction.type) {
       case 'SALE':
         return lang === 'tl' ? 'Cash / Kaliwaan' : 'Cash';
@@ -88,6 +95,23 @@ export const FormalReceipt: React.FC<FormalReceiptProps> = ({
   };
 
   const [isExporting, setIsExporting] = useState(false);
+  const [isZoomed, setIsZoomed] = useState(false);
+  const { triggerTip } = useExplorationTutorial();
+
+  useEffect(() => {
+    triggerTip({
+      id: 'receipt_details',
+      icon: Receipt,
+      title: {
+        tl: 'Detalye ng Resibo at Pag-share',
+        en: 'Receipt Breakdown & Sharing',
+      },
+      desc: {
+        tl: 'Nakalista rito ang mga biniling paninda, sukli, at kabuuang halaga. Gamitin ang Download icon para i-save o ang Share icon para ipadala sa Messenger/SMS ng suki!',
+        en: 'View itemized goods, cash tendered, and change. Tap the Download icon to save as image or Share to send via Messenger/SMS!',
+      },
+    });
+  }, [triggerTip]);
 
   const handlePrint = () => {
     window.print();
@@ -127,35 +151,39 @@ export const FormalReceipt: React.FC<FormalReceiptProps> = ({
   // Receipt greeting from storeSettings.purchaseMessage (empty if not set)
   const receiptGreeting = storeProfile.purchaseMessage ? storeProfile.purchaseMessage.trim() : '';
 
-  useEffect(() => {
-    const originalOverflow = document.body.style.overflow;
-    const originalTouchAction = document.body.style.touchAction;
-    const originalOverscroll = document.body.style.overscrollBehavior;
-
-    document.body.style.overflow = 'hidden';
-    document.body.style.touchAction = 'none';
-    document.body.style.overscrollBehavior = 'none';
-
-    return () => {
-      document.body.style.overflow = originalOverflow;
-      document.body.style.touchAction = originalTouchAction;
-      document.body.style.overscrollBehavior = originalOverscroll || '';
-    };
-  }, []);
+  // Prevent background scrolling while open with centralized leak-proof lock
+  useBodyScrollLock(true);
 
   return (
     <div
-      className="fixed inset-0 bg-black/65 backdrop-blur-xs z-50 flex flex-col items-center justify-start sm:justify-center p-2 sm:p-4 md:p-6 overflow-y-auto overscroll-contain min-h-full animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] animate-in fade-in duration-200 overflow-y-auto"
       onClick={onClose}
     >
       {/* Outer Card Container - strictly respecting theme system & responsive */}
       <div
         id="formal-receipt-modal-card"
-        className="my-auto w-full max-w-sm sm:max-w-md shadow-2xl rounded-3xl overflow-hidden border theme-card theme-border-subtle transition-opacity duration-150"
-        onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}
+        className={`my-auto w-full max-w-sm sm:max-w-md max-h-[90vh] flex flex-col shadow-2xl rounded-3xl overflow-hidden border theme-card theme-border-subtle animate-in fade-in duration-200 cursor-pointer ${
+          isZoomed ? 'fixed inset-0 z-50 !max-w-none !max-h-none !rounded-none' : ''
+        }`}
+        onClick={() => setIsZoomed(!isZoomed)}
       >
+        <AnimatePresence>
+          {isZoomed && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 z-40 backdrop-blur-sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsZoomed(false);
+              }}
+            />
+          )}
+        </AnimatePresence>
+
         {/* Top Header Bar */}
-        <div className="flex items-center justify-between px-4 py-3 border-b theme-border-subtle theme-bg-surface-subtle">
+        <div className="flex items-center justify-between px-4 py-3 border-b theme-border-subtle theme-bg-surface-subtle" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center gap-2">
             <Receipt className="w-4 h-4 theme-text-accent" />
             <span className="text-xs font-black uppercase tracking-wider theme-text-app">
@@ -203,23 +231,31 @@ export const FormalReceipt: React.FC<FormalReceiptProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="p-5 sm:p-6 text-xs space-y-3.5 select-text">
+        <div className="p-5 sm:p-6 text-xs space-y-3.5 select-text" onClick={(e) => e.stopPropagation()}>
           {/* Store Branding */}
-          <div className="text-center space-y-0.5 pb-1">
-            <h2 className="text-xs sm:text-sm font-black tracking-widest theme-text-accent uppercase">
-              TINDA
-            </h2>
-            <div className="text-base sm:text-lg font-black theme-text-app break-words whitespace-normal">
-              {storeName}
-            </div>
-            {storeAddress ? (
-              <div className="text-[11px] theme-text-secondary leading-tight break-words whitespace-normal">
-                {storeAddress}
+          <div className="flex items-start justify-between gap-3 pb-1">
+            <div className="flex items-center gap-3">
+              <StoreLogoDisplay logoAssetId={storeProfile.receiptLogoAssetId || storeProfile.logoAssetId} storeName={storeName} />
+              <div className="space-y-0.5">
+                <div className="text-base font-black theme-text-app leading-tight">
+                  {storeName}
+                </div>
+                {storeAddress ? (
+                  <div className="text-[11px] theme-text-secondary italic leading-tight break-words whitespace-normal line-clamp-2">
+                    {storeAddress}
+                  </div>
+                ) : null}
               </div>
-            ) : null}
+            </div>
+            
             {storeContact ? (
-              <div className="text-[11px] theme-text-secondary leading-tight break-words whitespace-normal">
-                {lang === 'tl' ? 'Kontak' : 'Contact'}: {storeContact}
+              <div className="text-right shrink-0">
+                <div className="text-[9px] font-bold theme-text-secondary uppercase tracking-widest mb-0.5">
+                  {lang === 'tl' ? 'Kontak' : 'Contact'}
+                </div>
+                <div className="text-[11px] font-medium theme-text-app">
+                  📞 {storeContact}
+                </div>
               </div>
             ) : null}
           </div>
@@ -263,7 +299,7 @@ export const FormalReceipt: React.FC<FormalReceiptProps> = ({
                     ? (lang === 'tl' ? 'Kinuha ni' : 'Received by')
                     : (lang === 'tl' ? 'Nagbayad' : 'Paid by')}:
                 </span>
-                <span className="font-bold text-amber-400 text-right break-words whitespace-normal">{transaction.handledBy}</span>
+                <span className="font-bold text-amber-700 dark:text-amber-400 text-right break-words whitespace-normal">{transaction.handledBy}</span>
               </div>
             )}
           </div>
@@ -278,7 +314,7 @@ export const FormalReceipt: React.FC<FormalReceiptProps> = ({
                 <div className="col-span-3 text-right">{lang === 'tl' ? 'Halaga' : 'Amount'}</div>
               </div>
 
-              <div className="space-y-1.5 max-h-48 overflow-y-auto pr-0.5">
+              <div className="space-y-1.5 max-h-[35vh] overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:theme-bg-surface-subtle [&::-webkit-scrollbar-track]:bg-transparent">
                 {realItems.map((it, idx) => {
                   const unitPrice = it.unitPrice || (it.quantity > 0 ? it.totalPrice / it.quantity : it.totalPrice);
                   return (
@@ -316,6 +352,20 @@ export const FormalReceipt: React.FC<FormalReceiptProps> = ({
               <span className="theme-text-secondary">{lang === 'tl' ? 'Paraan ng Pagbayad' : 'Payment Method'}:</span>
               <span className="font-bold theme-text-app">{getPaymentMethodLabel()}</span>
             </div>
+            {typeof transaction.cashTendered === 'number' && transaction.cashTendered > 0 && (
+              <>
+                <div className="flex justify-between items-center text-[11px] text-emerald-600 dark:text-emerald-400">
+                  <span>{lang === 'tl' ? 'Binayad na Pera' : 'Cash Tendered'}:</span>
+                  <span className="font-mono font-bold">{formatPeso(transaction.cashTendered)}</span>
+                </div>
+                {typeof transaction.changeAmount === 'number' && (
+                  <div className="flex justify-between items-center text-[11px] font-bold text-amber-500 dark:text-amber-400">
+                    <span>{lang === 'tl' ? 'Sukli' : 'Change'}:</span>
+                    <span className="font-mono font-black">{formatPeso(transaction.changeAmount)}</span>
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           {/* If Credit / Pautang */}
@@ -323,7 +373,7 @@ export const FormalReceipt: React.FC<FormalReceiptProps> = ({
             <div className="pt-2 border-t border-dashed theme-border-subtle space-y-3 text-[11px]">
               <div className="flex justify-between items-center">
                 <span className="theme-text-secondary">{lang === 'tl' ? 'Inaasahang Petsa ng Bayad' : 'Expected Payment Date'}:</span>
-                <span className="font-mono font-bold text-amber-400">
+                <span className="font-mono font-bold text-amber-700 dark:text-amber-400">
                   {dueDate || (lang === 'tl' ? 'Walang Takdang Araw' : 'No set date')}
                 </span>
               </div>

@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Zap, Layers, Plus, X, PackageCheck } from 'lucide-react';
+import { Zap, Layers, Plus, X, PackageCheck, ShoppingBag } from 'lucide-react';
 import type { InventoryItem, InventoryVariant } from '../types';
 import type { LanguageCode } from '../utils/i18n';
 import { formatPeso } from '../utils/formatters';
+import { useExplorationTutorial } from '../context/ExplorationTutorialContext';
+import { useBodyScrollLock } from '../utils/scrollLock';
 
 interface QuickSellPadProps {
   inventory: InventoryItem[];
@@ -19,23 +21,25 @@ export const QuickSellPad: React.FC<QuickSellPadProps> = ({
   onOpenAddVarietyItem,
 }) => {
   const [selectedVariantItem, setSelectedVariantItem] = useState<InventoryItem | null>(null);
+  const { triggerTip } = useExplorationTutorial();
 
   useEffect(() => {
-    if (!selectedVariantItem) return;
-    const originalOverflow = document.body.style.overflow;
-    const originalTouchAction = document.body.style.touchAction;
-    const originalOverscroll = document.body.style.overscrollBehavior;
+    triggerTip({
+      id: 'quick_sell_pad',
+      icon: ShoppingBag,
+      title: {
+        tl: 'Mabilisang Pagbenta (Quick Sell)',
+        en: 'Quick Sell Cashier',
+      },
+      desc: {
+        tl: 'Piliin ang mga biniling paninda o ilagay ang bayad ng customer para awtomatikong lumabas ang eksaktong sukli.',
+        en: 'Add purchased items or enter the customer\'s cash to instantly calculate exact change.',
+      },
+    });
+  }, [triggerTip]);
 
-    document.body.style.overflow = 'hidden';
-    document.body.style.touchAction = 'none';
-    document.body.style.overscrollBehavior = 'none';
-
-    return () => {
-      document.body.style.overflow = originalOverflow;
-      document.body.style.touchAction = originalTouchAction;
-      document.body.style.overscrollBehavior = originalOverscroll || '';
-    };
-  }, [selectedVariantItem]);
+  // Prevent background scrolling while open with centralized leak-proof lock
+  useBodyScrollLock(selectedVariantItem !== null);
 
   // Filter items that are either marked as PACK_VARIETY or have variants / quickIcon
   const varietyItems = inventory.filter(
@@ -110,7 +114,7 @@ export const QuickSellPad: React.FC<QuickSellPadProps> = ({
       </div>
 
       {/* Grid of Quick Touch Tiles - Fluid Auto-fit for all Zoom scales */}
-      <div className="fluid-grid-tiles max-h-60 md:max-h-80 lg:max-h-none overflow-y-auto pr-1 scrollbar-thin">
+      <div className="fluid-grid-tiles max-h-60 md:max-h-80 lg:max-h-none overflow-y-auto no-scrollbar pr-1">
         {varietyItems.map((item) => {
           const icon = item.quickIcon || '⚡';
           const hasVariants = item.variants && item.variants.length > 0;
@@ -156,14 +160,14 @@ export const QuickSellPad: React.FC<QuickSellPadProps> = ({
       <AnimatePresence>
         {selectedVariantItem && (
           <div 
-            className="fixed inset-0 z-50 flex flex-col items-center justify-start sm:justify-center p-2 sm:p-4 overflow-y-auto overscroll-contain min-h-full bg-black/65 backdrop-blur-xs select-none animate-in fade-in duration-200"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] select-none animate-in fade-in duration-200"
             onClick={() => setSelectedVariantItem(null)}
           >
             <motion.div
               initial={{ opacity: 0, scale: 0.92, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.92, y: 10 }}
-              className="my-auto relative w-full max-w-xs md:max-w-md rounded-3xl bg-slate-900 border border-slate-800 p-5 shadow-2xl text-slate-100"
+              className="my-auto relative w-full max-w-xs md:max-w-md max-h-[85vh] overflow-y-auto no-scrollbar rounded-3xl bg-slate-900 border border-slate-800 p-5 shadow-2xl text-slate-100 animate-in fade-in duration-200"
               onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}
             >
               {/* Close button */}

@@ -1,0 +1,6 @@
+{
+  "summary":  "Plan to implement a manual 'Safe Area Offset' setting in the app to allow users to override incorrect system safe area reports.",
+  "updatedAt":  "2026-10-10T07:48:31.619451329Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}

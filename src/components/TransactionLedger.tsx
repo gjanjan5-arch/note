@@ -8,11 +8,14 @@ import {
  Check,
  X,
  Receipt,
+ Banknote,
 } from 'lucide-react';
 import type { Transaction, TransactionType } from '../types';
 import { formatPeso, formatDateTime, getLocalDateStr, formatDisplayItemName, formatDisplayNote } from '../utils/formatters';
 import { translate, type LanguageCode } from '../utils/i18n';
 import { FormalReceipt } from './FormalReceipt';
+import { useExplorationTutorial } from '../context/ExplorationTutorialContext';
+import { Notebook } from 'lucide-react';
 
 // Filter helper to exclude pseudo-item labels that duplicate payment/debt actions
 const isRealProductItem = (itemName: string): boolean => {
@@ -61,15 +64,47 @@ export const TransactionLedger: React.FC<TransactionLedgerProps> = ({
  onClearPrefillTransactionId,
 }) => {
  const [selectedTypes, setSelectedTypes] = useState<TransactionType[]>([]);
+ const [paymentMethodFilter, setPaymentMethodFilter] = useState<'ALL' | 'CASH'>('ALL');
  const [isSortAZ, setIsSortAZ] = useState(false);
  const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
  const dropdownRef = useRef<HTMLDivElement>(null);
  const [selectedDateFilter, setSelectedDateFilter] = useState<'TODAY' | 'YESTERDAY' | 'ALL'>('TODAY');
  const [viewDetailTx, setViewDetailTx] = useState<Transaction | null>(null);
- const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
  const lastSelectTimeRef = useRef<number>(0);
  const modalOpenTimeRef = useRef<number>(0);
- const backdropMouseDownTargetRef = useRef<EventTarget | null>(null);
+ const { triggerTip } = useExplorationTutorial();
+
+ useEffect(() => {
+  triggerTip({
+   id: 'lista_intro',
+   icon: Notebook,
+   title: {
+    tl: 'Talaan ng Transaksyon (LISTA)',
+    en: 'Transaction Ledger (LISTA)',
+   },
+   desc: {
+    tl: 'Dito naka-save ang lahat ng benta, pautang, at restock ng iyong tindahan ayon sa oras.',
+    en: 'All your store\'s sales, credit, and restock records are chronologically tracked here.',
+   },
+  });
+ }, [triggerTip]);
+
+ useEffect(() => {
+  if (transactions.length > 0) {
+   triggerTip({
+    id: 'lista_first_item',
+    icon: Notebook,
+    title: {
+     tl: 'Unang Tala sa Ledger',
+     en: 'First Recorded Transaction',
+    },
+    desc: {
+     tl: 'Bawat benta o bayad ay nagkakaroon ng card dito para may kumpletong audit trail ka at walang perang nawawala.',
+     en: 'Every sale or payment appears here as an audit trail so no money or stock goes missing.',
+    },
+   });
+  }
+ }, [transactions.length, triggerTip]);
 
  useEffect(() => {
   if (prefillTransactionId != null) {
@@ -121,27 +156,7 @@ export const TransactionLedger: React.FC<TransactionLedgerProps> = ({
   setViewDetailTx(tx);
  };
 
- const handleCardTouchStart = (e: React.TouchEvent) => {
-  const t = e.touches[0];
-  if (t) {
-   touchStartRef.current = { x: t.clientX, y: t.clientY, time: Date.now() };
-  }
- };
 
- const handleCardTouchEnd = (tx: Transaction, e: React.TouchEvent) => {
-  if (!touchStartRef.current) return;
-  const t = e.changedTouches[0];
-  if (t) {
-   const dx = Math.abs(t.clientX - touchStartRef.current.x);
-   const dy = Math.abs(t.clientY - touchStartRef.current.y);
-   const dt = Date.now() - touchStartRef.current.time;
-   // If finger moved less than 15px and tap was under 500ms, trigger tap
-   if (dx < 15 && dy < 15 && dt < 500) {
-    handleItemSelect(tx, 'onTouchEnd');
-   }
-  }
-  touchStartRef.current = null;
- };
 
  const todayStr = getLocalDateStr();
  const yesterday = new Date();
@@ -182,6 +197,11 @@ export const TransactionLedger: React.FC<TransactionLedgerProps> = ({
    // 2. Type Filter (Multi-select / empty = all)
    if (selectedTypes.length > 0 && !selectedTypes.includes(tx.type)) return false;
 
+   // 3. Payment Method Filter (Cash Only)
+   if (paymentMethodFilter === 'CASH') {
+    if (tx.paymentMethod && tx.paymentMethod !== 'CASH') return false;
+   }
+
    return true;
   })
   .sort((a, b) => {
@@ -204,7 +224,7 @@ export const TransactionLedger: React.FC<TransactionLedgerProps> = ({
    return (b.timestamp || 0) - (a.timestamp || 0);
   });
 
- const activeFiltersCount = selectedTypes.length + (isSortAZ ? 1 : 0);
+ const activeFiltersCount = selectedTypes.length + (isSortAZ ? 1 : 0) + (paymentMethodFilter !== 'ALL' ? 1 : 0);
 
  return (
   <div id="transaction-ledger-container" className="space-y-4">
@@ -308,38 +328,21 @@ export const TransactionLedger: React.FC<TransactionLedgerProps> = ({
           {selectedTypes.includes('SALE') && <Check className="w-3.5 h-3.5" />}
          </button>
 
-         {/* Option 3: Credit */}
+         {/* Option: Cash */}
          <button
           type="button"
-          onClick={() => toggleType('PAUTANG_RECORD')}
+          onClick={() => setPaymentMethodFilter((prev) => (prev === 'CASH' ? 'ALL' : 'CASH'))}
           className={`w-full flex items-center justify-between p-2 rounded-xl text-xs font-bold transition-all text-left cursor-pointer select-none touch-manipulation ${
-           selectedTypes.includes('PAUTANG_RECORD')
+           paymentMethodFilter === 'CASH'
             ? 'theme-bg-primary text-white'
             : 'theme-text-app hover:theme-bg-surface-subtle'
           }`}
          >
           <div className="flex items-center gap-2">
-           <span className="text-sm">💳</span>
-           <span>{translate(lang, 'type_pautang')}</span>
+           <Banknote className="w-3.5 h-3.5" />
+           <span>{lang === 'tl' ? 'Spot Cash Lamang' : 'Cash Only'}</span>
           </div>
-          {selectedTypes.includes('PAUTANG_RECORD') && <Check className="w-3.5 h-3.5" />}
-         </button>
-
-         {/* Option 4: Payment */}
-         <button
-          type="button"
-          onClick={() => toggleType('PAUTANG_PAYMENT')}
-          className={`w-full flex items-center justify-between p-2 rounded-xl text-xs font-bold transition-all text-left cursor-pointer select-none touch-manipulation ${
-           selectedTypes.includes('PAUTANG_PAYMENT')
-            ? 'theme-bg-primary text-white'
-            : 'theme-text-app hover:theme-bg-surface-subtle'
-          }`}
-         >
-          <div className="flex items-center gap-2">
-           <span className="text-sm">💰</span>
-           <span>{translate(lang, 'type_bayad')}</span>
-          </div>
-          {selectedTypes.includes('PAUTANG_PAYMENT') && <Check className="w-3.5 h-3.5" />}
+          {paymentMethodFilter === 'CASH' && <Check className="w-3.5 h-3.5" />}
          </button>
 
          {/* Option 5: Restock */}
@@ -366,6 +369,7 @@ export const TransactionLedger: React.FC<TransactionLedgerProps> = ({
             type="button"
             onClick={() => {
              setSelectedTypes([]);
+             setPaymentMethodFilter('ALL');
              setIsSortAZ(false);
             }}
             className="w-full text-center py-1.5 text-[11px] font-bold theme-text-secondary hover:theme-text-accent cursor-pointer select-none touch-manipulation"
@@ -399,22 +403,22 @@ export const TransactionLedger: React.FC<TransactionLedgerProps> = ({
         { bg: string; label: string; icon: any }
        > = {
         SALE: {
-         bg: 'theme-bg-surface-subtle theme-text-accent border theme-border-subtle',
+         bg: 'theme-bg-surface-subtle theme-text-app border theme-border-subtle',
          label: translate(lang, 'type_sale'),
          icon: ShoppingBag,
         },
         PAUTANG_RECORD: {
-         bg: 'bg-amber-500/15 text-amber-300 border border-amber-500/30',
+         bg: 'bg-amber-500/10 text-amber-900 dark:text-amber-300 border border-amber-500/30',
          label: translate(lang, 'type_pautang'),
          icon: ArrowUpRight,
         },
         PAUTANG_PAYMENT: {
-         bg: 'bg-blue-500/15 text-blue-300 border border-blue-500/30',
+         bg: 'bg-sky-500/10 text-sky-900 dark:text-sky-300 border border-sky-500/30',
          label: translate(lang, 'type_bayad'),
          icon: ArrowDownLeft,
         },
         RESTOCK: {
-         bg: 'bg-purple-500/15 text-purple-300 border border-purple-500/30',
+         bg: 'theme-bg-surface-subtle theme-text-secondary border theme-border-subtle',
          label: translate(lang, 'type_restock'),
          icon: RefreshCw,
         },
@@ -434,8 +438,6 @@ export const TransactionLedger: React.FC<TransactionLedgerProps> = ({
          role="button"
          tabIndex={0}
          aria-label={`View transaction details for ${tx.customerName || tx.type}`}
-         onTouchStart={handleCardTouchStart}
-         onTouchEnd={(e) => handleCardTouchEnd(tx, e)}
          onClick={(e) => {
           e.stopPropagation();
           handleItemSelect(tx, 'onClick');
@@ -465,11 +467,18 @@ export const TransactionLedger: React.FC<TransactionLedgerProps> = ({
            <span className="text-[11px] font-mono font-medium theme-text-secondary">
             • #{tx.id != null ? String(tx.id).padStart(6, '0') : String(index).padStart(6, '0')}
            </span>
+
+           {tx.type === 'SALE' ? (
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold theme-text-secondary theme-bg-surface-subtle px-2 py-0.5 rounded-lg border theme-border-subtle">
+             <Banknote className="w-3 h-3 theme-text-accent" />
+             Cash
+            </span>
+           ) : null}
           </div>
 
           {tx.handledBy && (
-           <span className="text-[10px] font-bold text-amber-300 bg-amber-500/15 px-2 py-0.5 rounded-lg border border-amber-500/30 whitespace-normal break-words">
-            {tx.type === 'PAUTANG_RECORD' ? (lang === 'tl' ? 'Kinuha ni' : 'Taken by') : (lang === 'tl' ? 'Nagbayad' : 'Paid by')}: {tx.handledBy}
+           <span className="text-[10px] font-bold theme-text-secondary theme-bg-surface-subtle px-2 py-0.5 rounded-lg border theme-border-subtle whitespace-normal break-words">
+            {tx.type === 'PAUTANG_RECORD' ? (lang === 'tl' ? 'Kinuha ni' : 'Taken by') : (lang === 'tl' ? 'Nagbayad' : 'Paid by')}: <span className="theme-text-app font-black">{tx.handledBy}</span>
            </span>
           )}
          </div>

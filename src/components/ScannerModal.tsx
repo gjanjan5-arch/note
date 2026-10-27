@@ -43,6 +43,9 @@ import LZString from 'lz-string';
 import jsQR from 'jsqr';
 import type { BuyerOrderPayload } from './BuyerOrderModal';
 import { safeStorage } from '../utils/safeStorage';
+import { useBodyScrollLock } from '../utils/scrollLock';
+import { usePerformance } from '../context/PerformanceContext';
+import { useExplorationTutorial } from '../context/ExplorationTutorialContext';
 
 const getScannerTitle = (scanType: 'all' | 'qr_only' | 'search' | string | undefined, lang: LanguageCode) => {
   if (scanType === 'search') {
@@ -422,18 +425,45 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
   const isOpenRef = useRef<boolean>(isOpen);
   isOpenRef.current = isOpen;
 
+  const { mode: perfMode, resolvedMode } = usePerformance();
+  const { triggerTip } = useExplorationTutorial();
+
+  useEffect(() => {
+    if (isOpen) {
+      triggerTip({
+        id: 'scanner_intro',
+        icon: Barcode,
+        title: {
+          tl: 'Barcode Scanner',
+          en: 'Barcode Scanner',
+        },
+        desc: {
+          tl: 'Itapat ang camera sa barcode ng produkto para awtomatikong mahanap ang presyo nang hindi na nagta-type.',
+          en: 'Point your camera at any product barcode to instantly retrieve price and inventory without typing.',
+        },
+      });
+    }
+  }, [isOpen, triggerTip]);
+
   // Adaptive Scanner: Device Tier & Google Play Services Refs & State
   const deviceTierRef = useRef<'high' | 'mid' | 'low'>('mid');
   const hasGooglePlayServicesRef = useRef<boolean>(false);
   const [deviceTier, setDeviceTier] = useState<'high' | 'mid' | 'low'>('mid');
   const [hasGooglePlayServices, setHasGooglePlayServices] = useState<boolean>(false);
 
-  // STEP 1: Device Tier Detection (runs once on mount)
+  // STEP 1: Device Tier Detection (adapts immediately to Performance Mode override)
   useEffect(() => {
     let isCancelled = false;
     const detectTier = async () => {
-      const ram = (navigator as any).deviceMemory || 2;
-      const tier: 'high' | 'mid' | 'low' = ram >= 3 ? 'high' : ram >= 2 ? 'mid' : 'low';
+      let tier: 'high' | 'mid' | 'low';
+      if (perfMode === 'ECO') {
+        tier = 'low';
+      } else if (perfMode === 'FULL') {
+        tier = 'high';
+      } else {
+        const ram = (navigator as any).deviceMemory || 2;
+        tier = ram >= 3 ? 'high' : ram >= 2 ? 'mid' : 'low';
+      }
       deviceTierRef.current = tier;
       if (!isCancelled) setDeviceTier(tier);
 
@@ -446,7 +476,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
     return () => {
       isCancelled = true;
     };
-  }, []);
+  }, [perfMode, resolvedMode]);
 
   const shouldUseNativeScanner = useCallback(() => {
     return (
@@ -487,6 +517,15 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
 
   // Tap-to-Focus Visual Indicator Point
   const [focusPoint, setFocusPoint] = useState<{ x: number; y: number; id: number } | null>(null);
+
+  useEffect(() => {
+    if (focusPoint) {
+      const timer = setTimeout(() => {
+        setFocusPoint(null);
+      }, 1100);
+      return () => clearTimeout(timer);
+    }
+  }, [focusPoint]);
 
   // Camera Viewport Container Ref
   const cameraContainerRef = useRef<HTMLDivElement | null>(null);
@@ -549,22 +588,8 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
   // 60-Second Inactivity Sleep Timer Ref
   const inactivityTimerRef = useRef<any>(null);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    const originalOverflow = document.body.style.overflow;
-    const originalTouchAction = document.body.style.touchAction;
-    const originalOverscroll = document.body.style.overscrollBehavior;
-
-    document.body.style.overflow = 'hidden';
-    document.body.style.touchAction = 'none';
-    document.body.style.overscrollBehavior = 'none';
-
-    return () => {
-      document.body.style.overflow = originalOverflow;
-      document.body.style.touchAction = originalTouchAction;
-      document.body.style.overscrollBehavior = originalOverscroll || '';
-    };
-  }, [isOpen]);
+  // Prevent background scrolling while open with centralized leak-proof lock
+  useBodyScrollLock(isOpen);
 
   // Recognition outcome states
   const [recognizedItem, setRecognizedItem] = useState<InventoryItem | null>(null);
@@ -791,9 +816,24 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
 
     // Check if code is a compressed or JSON Buyer Order / Store Catalog payload
     try {
-      let decompressed = LZString.decompressFromEncodedURIComponent(cleanCode);
-      if (!decompressed) decompressed = LZString.decompressFromBase64(cleanCode);
-      if (!decompressed) decompressed = cleanCode;
+      let codeToDecode = cleanCode;
+      if (codeToDecode.includes('#data=')) {
+        codeToDecode = codeToDecode.split('#data=')[1];
+      } else if (codeToDecode.includes('?data=')) {
+        codeToDecode = codeToDecode.split('?data=')[1];
+      }
+
+      let decompressed = LZString.decompressFromEncodedURIComponent(codeToDecode);
+      if (!decompressed) decompressed = LZString.decompressFromBase64(codeToDecode);
+      if (!decompressed && codeToDecode.includes('%')) {
+        try {
+          const uriDecoded = decodeURIComponent(codeToDecode);
+          decompressed =
+            LZString.decompressFromEncodedURIComponent(uriDecoded) ||
+            LZString.decompressFromBase64(uriDecoded);
+        } catch (_) {}
+      }
+      if (!decompressed) decompressed = codeToDecode;
 
       if (decompressed.startsWith('{') && decompressed.endsWith('}')) {
         const parsed = JSON.parse(decompressed);
@@ -880,44 +920,41 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
       // Not a JSON/Buyer QR, proceed to barcode validation
     }
 
-    // Checksum & format validation check strictly for 1D numeric barcodes (8, 12, 13 digits)
-    const isStandard1DNumeric = /^\d{8}$|^\d{12}$|^\d{13}$/.test(cleanCode);
-    if (isStandard1DNumeric && !validateBarcode(cleanCode)) {
-      setIsScanning(false);
-      setRejectedScanCount((prev) => prev + 1);
-      setLastRejectedBarcode(cleanCode);
-      setLastRejectedReason(
-        lang === 'tl'
-          ? 'Mali ang checksum o pormat ng barcode'
-          : 'Invalid barcode checksum or format'
-      );
-      playScanBeep('error');
-      setStatusText(
-        lang === 'tl'
-          ? 'Mali ang nabasang barcode. Mag-scan ulit.'
-          : 'Barcode misread. Please scan again.'
-      );
-      setTimeout(() => {
-        setIsScanning(true);
-        if (shouldUseNativeScanner() && scanMode === 'barcode') {
-          startNativeScanRef.current?.();
-        }
-      }, 1500);
-      return;
-    }
-
+    // Notice: We purposefully removed strict 1D checksum validations (like /^\d{8}$/)
+    // so the scanner can instantly accept ANY custom code or alphanumeric string as a valid SKU.
     setValidScanCount((prev) => prev + 1);
     setDetectedCode(cleanCode);
     triggerHapticFeedback();
 
-    const matchedBySku = await db.inventory
+    let matchedItem = await db.inventory
       .where('sku')
       .equalsIgnoreCase(cleanCode)
       .first();
 
-    if (matchedBySku) {
+    // Fallback: Check item.barcode and item.variants[].barcode for PACK_VARIETY or legacy records
+    if (!matchedItem) {
+      matchedItem = await db.inventory
+        .filter((item) => {
+          if (item.barcode && typeof item.barcode === 'string' && item.barcode.toLowerCase() === cleanCode.toLowerCase()) {
+            return true;
+          }
+          if (
+            item.variants &&
+            Array.isArray(item.variants) &&
+            item.variants.some(
+              (v) => v.barcode && typeof v.barcode === 'string' && v.barcode.toLowerCase() === cleanCode.toLowerCase()
+            )
+          ) {
+            return true;
+          }
+          return false;
+        })
+        .first();
+    }
+
+    if (matchedItem) {
       setIsScanning(false);
-      setRecognizedItem(matchedBySku);
+      setRecognizedItem(matchedItem);
       // Temporarily dim/turn off torch and stop camera stream while reviewing product recognized modal
       applyPhysicalTorch(false);
       if (streamRef.current) {
@@ -926,7 +963,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
       }
       playScanBeep('success');
       setStatusText(lang === 'tl' ? 'Natukoy ang paninda!' : 'Item recognized by barcode!');
-      onScanSuccess?.(matchedBySku.name);
+      onScanSuccess?.(matchedItem.name);
     } else {
       // Barcode detected but not found in db: Show unrecognized fallback with prefilled SKU
       setIsScanning(false);
@@ -1261,6 +1298,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
       );
       setIsScanning(true);
 
+      let codeHandled = false;
       try {
         const formats =
           scanType === 'qr_only'
@@ -1279,6 +1317,8 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
         if (scanResult && scanResult.barcodes && scanResult.barcodes.length > 0) {
           const detected = scanResult.barcodes[0].rawValue?.trim();
           if (detected) {
+            codeHandled = true;
+            isOpenRef.current = false;
             await handleScannedBarcode(detected);
           }
         }
@@ -1289,8 +1329,8 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
         isNativeScannerActiveRef.current = false;
         // Step 5: Wait for Android to release native camera
         await new Promise((r) => setTimeout(r, 300));
-        // Step 6: Restart WebView camera if modal still open
-        if (isOpenRef.current && !isNativeScannerActiveRef.current) {
+        // Step 6: Restart WebView camera only if modal still open and no barcode was processed
+        if (!codeHandled && isOpenRef.current && !isNativeScannerActiveRef.current) {
           await startCameraWithRetry();
         }
       }
@@ -1729,13 +1769,35 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
             try {
               const imgData = ctx.getImageData(0, 0, cropSize, cropSize);
               const code = jsQR(imgData.data, imgData.width, imgData.height, {
-                inversionAttempts: 'dontInvert',
+                inversionAttempts: 'attemptBoth',
               });
               if (code && code.data) {
                 foundQr = code.data.trim();
               }
             } catch (err) {
               console.warn('[ScannerModal] jsQR ROI decode notice:', err);
+            }
+          }
+
+          // Wide-angle fallback for QR codes held slightly off-center or further away
+          if (!foundQr) {
+            try {
+              const wideW = Math.min(vWidth, 640);
+              const wideH = Math.round(wideW * (vHeight / vWidth));
+              if (canvas.width !== wideW || canvas.height !== wideH) {
+                canvas.width = wideW;
+                canvas.height = wideH;
+              }
+              ctx.drawImage(video, 0, 0, wideW, wideH);
+              const wideImgData = ctx.getImageData(0, 0, wideW, wideH);
+              const wideCode = jsQR(wideImgData.data, wideW, wideH, {
+                inversionAttempts: 'attemptBoth',
+              });
+              if (wideCode && wideCode.data) {
+                foundQr = wideCode.data.trim();
+              }
+            } catch (err) {
+              console.warn('[ScannerModal] jsQR wide decode notice:', err);
             }
           }
         }
@@ -1798,10 +1860,30 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
           try {
             const imgData = ctx.getImageData(0, 0, cropSize, cropSize);
             const qrCode = jsQR(imgData.data, imgData.width, imgData.height, {
-              inversionAttempts: 'dontInvert',
+              inversionAttempts: 'attemptBoth',
             });
             if (qrCode && qrCode.data) {
               foundBarcode = qrCode.data.trim();
+            }
+          } catch (_) {}
+        }
+
+        // Secondary wider field of view decode for QR codes held slightly off-center
+        if (!foundBarcode && (!scanType || scanType === 'all' || scanType === 'search')) {
+          try {
+            const wideW = Math.min(vWidth, 480);
+            const wideH = Math.round(wideW * (vHeight / vWidth));
+            if (canvas.width !== wideW || canvas.height !== wideH) {
+              canvas.width = wideW;
+              canvas.height = wideH;
+            }
+            ctx.drawImage(video, 0, 0, wideW, wideH);
+            const wideImgData = ctx.getImageData(0, 0, wideW, wideH);
+            const wideQr = jsQR(wideImgData.data, wideW, wideH, {
+              inversionAttempts: 'attemptBoth',
+            });
+            if (wideQr && wideQr.data) {
+              foundBarcode = wideQr.data.trim();
             }
           } catch (_) {}
         }
@@ -2643,7 +2725,6 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
               initial={{ scale: 1.4, opacity: 1 }}
               animate={{ scale: 1, opacity: [1, 1, 0] }}
               transition={{ duration: 1.1, times: [0, 0.4, 1] }}
-              onAnimationComplete={() => setFocusPoint(null)}
               style={{ left: focusPoint.x - 24, top: focusPoint.y - 24 }}
               className="absolute w-12 h-12 border-2 border-amber-400 rounded-xl pointer-events-none z-30 shadow-[0_0_12px_rgba(251,191,36,0.6)] flex items-center justify-center"
             >
@@ -2694,7 +2775,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
 
           {/* LIVE DIAGNOSTIC HUD OVERLAY FOR NATIVE APK OCR DEBUGGING */}
           {showHud ? (
-            <div className="absolute top-16 left-3 right-3 z-30 pointer-events-auto bg-black/85  border border-amber-500/40 rounded-2xl p-2.5 shadow-2xl text-[10px] font-mono text-amber-300 space-y-1 max-h-52 overflow-y-auto">
+            <div className="absolute top-16 left-3 right-3 z-30 pointer-events-auto bg-black/85  border border-amber-500/40 rounded-2xl p-2.5 shadow-2xl text-[10px] font-mono text-amber-300 space-y-1 max-h-52 overflow-y-auto no-scrollbar">
               <div className="flex items-center justify-between border-b border-amber-500/30 pb-1 mb-1">
                 <span className="font-bold text-amber-400 flex items-center gap-1 text-[11px]">
                   <Bug className="w-3.5 h-3.5" /> DIAGNOSTIC HUD (OCR DEBUG)

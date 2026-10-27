@@ -63,8 +63,10 @@ export const StoreQRModal: React.FC<StoreQRModalProps> = ({
       p: contactNumber,
       loc: storeAddress,
       owner: ownerName,
+      ownerName,
       m: purchaseMessage,
       offlineText,
+      icon: profile.logoAssetId?.toString(),
       i: activeInventory.map((item) => [
         item.name,
         typeof item.unitPrice === 'number' ? item.unitPrice : ((item as any).price || 0),
@@ -95,12 +97,12 @@ export const StoreQRModal: React.FC<StoreQRModalProps> = ({
 
   return (
     <div 
-      className="fixed inset-0 z-50 flex flex-col items-center justify-start sm:justify-center p-2 sm:p-4 md:p-6 bg-black/65 backdrop-blur-xs select-none overflow-y-auto overscroll-contain min-h-full animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] select-none animate-in fade-in duration-200"
       onClick={onClose}
     >
       <div 
         id="store-qr-modal-card"
-        className="my-auto relative w-full max-w-sm md:max-w-md rounded-3xl theme-bg-card border theme-border shadow-2xl p-5 sm:p-6 theme-text-app flex flex-col items-center"
+        className="my-auto relative w-full max-w-sm md:max-w-md max-h-[90vh] overflow-y-auto no-scrollbar rounded-3xl theme-bg-card border theme-border shadow-2xl p-5 sm:p-6 theme-text-app flex flex-col items-center animate-in fade-in duration-200"
         onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}
       >
         <button
@@ -125,10 +127,10 @@ export const StoreQRModal: React.FC<StoreQRModalProps> = ({
             <span>{activeInventory.length} {isTl ? 'paninda sa QR' : 'items cataloged'}</span>
           </div>
 
-          <div ref={qrContainerRef} className="p-4 bg-white rounded-3xl shadow-inner border-4 theme-border max-w-[220px] w-full aspect-square flex items-center justify-center">
+          <div ref={qrContainerRef} className="p-3.5 bg-white rounded-3xl shadow-inner border-4 theme-border max-w-[270px] w-full aspect-square flex items-center justify-center">
             <QRCode 
               value={qrData}
-              size={200}
+              size={256}
               level="M"
               style={{ height: 'auto', maxWidth: '100%', width: '100%' }}
             />

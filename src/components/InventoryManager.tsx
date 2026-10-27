@@ -1,1480 +1,920 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import {
- Package,
- Plus,
- Search,
- AlertTriangle,
- Edit3,
- Trash2,
- Minus,
- ShoppingBag,
- CheckCircle2,
- X,
- Filter,
- Check,
- Receipt,
- ShoppingCart,
- Pencil,
- User,
- CreditCard,
- Barcode,
- Layers,
- Camera,
- Image,
- Loader2,
- Zap,
- ChevronDown,
- ChevronUp,
-} from 'lucide-react';
-import type { InventoryItem, Customer, InventoryVariant, ProductItemType, Transaction } from '../types';
-import { db } from '../db/db';
-import { formatPeso, formatDateTime, getLocalDateStr } from '../utils/formatters';
-import { translate, type LanguageCode } from '../utils/i18n';
-import { ConfirmModal } from './ConfirmModal';
-import { AlertModal } from './AlertModal';
-import { FormalReceipt } from './FormalReceipt';
-import { ProductModal } from './ProductModal';
-import { compressImage } from '../utils/imageCompressor';
-import { TINGI_PRESETS, calculateWeightVariants, type TingiPreset } from '../utils/tingiCalculator';
+  Package,
+  Plus,
+  Search,
+  AlertTriangle,
+  Edit3,
+  Trash2,
+  Minus,
+  ShoppingBag,
+  CheckCircle2,
+  X,
+  Filter,
+  Check,
+  Receipt,
+  ShoppingCart,
+  Pencil,
+  User,
+  CreditCard,
+  Barcode,
+  Layers,
+  Camera,
+  Image,
+  Loader2,
+  Zap,
+  ChevronDown,
+  ChevronUp,
+  Smartphone,
+  Banknote,
+} from "lucide-react";
+import type { InventoryItem, Customer, InventoryVariant, ProductItemType, Transaction } from "../types";
+import { db } from "../db/db";
+import { formatPeso, formatDateTime, getLocalDateStr } from "../utils/formatters";
+import { translate, type LanguageCode } from "../utils/i18n";
+import { ConfirmModal } from "./ConfirmModal";
+import { AlertModal } from "./AlertModal";
+import { FormalReceipt } from "./FormalReceipt";
+import { ProductModal } from "./ProductModal";
+import { ScannerModal } from "./ScannerModal";
+import { useExplorationTutorial } from "../context/ExplorationTutorialContext";
+import { compressImage } from "../utils/imageCompressor";
+import { TINGI_PRESETS, calculateWeightVariants, type TingiPreset } from "../utils/tingiCalculator";
 
 interface InventoryManagerProps {
- inventory: InventoryItem[];
- lang: LanguageCode;
- onRefresh: () => void;
- openAddModalPrefill?: { name?: string; sku?: string; itemType?: ProductItemType } | null;
- onClearAddModalPrefill?: () => void;
- prefillAction?: { productId: number; action: 'EDIT' | 'SELL' | 'VIEW' } | null;
- onClearPrefillAction?: () => void;
+  inventory: InventoryItem[];
+  lang: LanguageCode;
+  onRefresh: () => void;
+  openAddModalPrefill?: { name?: string; sku?: string; itemType?: ProductItemType } | null;
+  onClearAddModalPrefill?: () => void;
+  prefillAction?: { productId: number; action: "EDIT" | "SELL" | "VIEW" } | null;
+  onClearPrefillAction?: () => void;
+  onOpenRecommendations?: () => void;
 }
 
 interface CartItem {
- id: string; // unique cart line id
- productId: number;
- name: string;
- unitPrice: number;
- availableStock: number;
- quantity: number;
- variantLabel?: string;
- variantIndex?: number;
+  id: string; // unique cart line id
+  productId: number;
+  name: string;
+  unitPrice: number;
+  availableStock: number;
+  quantity: number;
+  variantLabel?: string;
+  variantIndex?: number;
 }
 
 interface SaleReceipt {
- timestamp: number;
- items: { name: string; quantity: number; unitPrice: number; subtotal: number }[];
- totalAmount: number;
- buyersMoney?: number;
- change?: number;
- isCredit?: boolean;
- customerName?: string;
- customerPhone?: string;
+  timestamp: number;
+  items: { name: string; quantity: number; unitPrice: number; subtotal: number }[];
+  totalAmount: number;
+  buyersMoney?: number;
+  change?: number;
+  isCredit?: boolean;
+  customerName?: string;
+  customerPhone?: string;
 }
 
 const PRODUCT_CATEGORIES = [
- 'Beverages',
- 'Noodles',
- 'Snacks',
- 'Condiments',
- 'Personal Care',
- 'Cigarettes',
- 'Grocery',
+  "Beverages",
+  "Noodles",
+  "Snacks",
+  "Condiments",
+  "Personal Care",
+  "Cigarettes",
+  "Grocery",
 ];
 
 const ITEM_ICON_OPTIONS = [
- { icon: '🥤', label: '🥤 Inumin (Softdrinks & Drinks)', category: 'Beverages' },
- { icon: '🍿', label: '🍿 Snacks & Chichirya', category: 'Snacks' },
- { icon: '🥫', label: '🥫 Delata & Canned Goods', category: 'Grocery' },
- { icon: '🍜', label: '🍜 Instant Noodles & Sopas', category: 'Noodles' },
- { icon: '🍞', label: '🍞 Tinapay & Bakery', category: 'Grocery' },
- { icon: '🧼', label: '🧼 Banyo & Sabon (Personal Care)', category: 'Personal Care' },
- { icon: '🧹', label: '🧹 Panglinis & Labada', category: 'Grocery' },
- { icon: '🧂', label: '🧂 Bumbu & Condiments', category: 'Condiments' },
- { icon: '🍺', label: '🍺 Alak & Beer', category: 'Beverages' },
- { icon: '🍬', label: '🍬 Kendi & Tsokolate', category: 'Snacks' },
- { icon: '🧊', label: '🧊 Yelo & Ice Products', category: 'Beverages' },
- { icon: '🍚', label: '🍚 Bigas & Rice', category: 'Grocery' },
- { icon: '🚬', label: '🚬 Yosi / Cigarettes', category: 'Cigarettes' },
- { icon: '🛢️', label: '🛢️ Mantika / Cooking Oil', category: 'Condiments' },
- { icon: '🪵', label: '🪵 Uling & Kahoy', category: 'Grocery' },
- { icon: '🥚', label: '🥚 Itlog / Eggs', category: 'Grocery' },
- { icon: '🧄', label: '🧄 Bawang, Sibuyas & Spices', category: 'Condiments' },
- { icon: '🥩', label: '🥩 Karne & Isda', category: 'Grocery' },
- { icon: '📦', label: '📦 Pangkalahatan (General)', category: 'Grocery' },
+  { icon: "🥤", label: "🥤 Inumin (Softdrinks & Drinks)", category: "Beverages" },
+  { icon: "🍿", label: "🍿 Snacks & Chichirya", category: "Snacks" },
+  { icon: "🥫", label: "🥫 Delata & Canned Goods", category: "Grocery" },
+  { icon: "🍜", label: "🍜 Instant Noodles & Sopas", category: "Noodles" },
+  { icon: "🍞", label: "🍞 Tinapay & Bakery", category: "Grocery" },
+  { icon: "🧼", label: "🧼 Banyo & Sabon (Personal Care)", category: "Personal Care" },
+  { icon: "🧹", label: "🧹 Panglinis & Labada", category: "Grocery" },
+  { icon: "🧂", label: "🧂 Bumbu & Condiments", category: "Condiments" },
+  { icon: "🍺", label: "🍺 Alak & Beer", category: "Beverages" },
+  { icon: "🍬", label: "🍬 Kendi & Tsokolate", category: "Snacks" },
+  { icon: "🧊", label: "🧊 Yelo & Ice Products", category: "Beverages" },
+  { icon: "🍚", label: "🍚 Bigas & Rice", category: "Grocery" },
+  { icon: "🚬", label: "🚬 Yosi / Cigarettes", category: "Cigarettes" },
+  { icon: "🛢️", label: "🛢️ Mantika / Cooking Oil", category: "Condiments" },
+  { icon: "🪵", label: "🪵 Uling & Kahoy", category: "Grocery" },
+  { icon: "🥚", label: "🥚 Itlog / Eggs", category: "Grocery" },
+  { icon: "🧄", label: "🧄 Bawang, Sibuyas & Spices", category: "Condiments" },
+  { icon: "🥩", label: "🥩 Karne & Isda", category: "Grocery" },
+  { icon: "📦", label: "📦 Pangkalahatan (General)", category: "Grocery" },
 ];
 
 const INVENTORY_FILTER_OPTIONS = [
- { id: 'TYPE_ALL', label: 'Lahat (All Items)', icon: '📋', type: 'itemType' },
- { id: 'TYPE_STANDARD', label: '📦 Standard Items', icon: '📦', type: 'itemType' },
- { id: 'TYPE_PACK_VARIETY', label: '⚡ Pack & Variety', icon: '⚡', type: 'itemType' },
- { id: 'AZ_SORT', label: 'A to Z Sort', icon: '🔤', type: 'sort' },
- { id: 'Beverages', label: 'Beverages', icon: '🥤', type: 'category' },
- { id: 'Noodles', label: 'Noodles', icon: '🍜', type: 'category' },
- { id: 'Snacks', label: 'Snacks', icon: '🍿', type: 'category' },
- { id: 'Condiments', label: 'Condiments', icon: '🧂', type: 'category' },
- { id: 'Personal Care', label: 'Personal Care', icon: '🧴', type: 'category' },
- { id: 'Cigarettes', label: 'Cigarettes', icon: '🚬', type: 'category' },
- { id: 'Grocery', label: 'Grocery', icon: '🥫', type: 'category' },
+  { id: "TYPE_ALL", label: "Lahat (All Items)", icon: "📋", type: "itemType" },
+  { id: "TYPE_STANDARD", label: "📦 Standard Items", icon: "📦", type: "itemType" },
+  { id: "TYPE_PACK_VARIETY", label: "⚡ Pack & Variety", icon: "⚡", type: "itemType" },
+  { id: "AZ_SORT", label: "A to Z Sort", icon: "🔤", type: "sort" },
+  { id: "Beverages", label: "Beverages", icon: "🥤", type: "category" },
+  { id: "Noodles", label: "Noodles", icon: "🍜", type: "category" },
+  { id: "Snacks", label: "Snacks", icon: "🍿", type: "category" },
+  { id: "Condiments", label: "Condiments", icon: "🧂", type: "category" },
+  { id: "Personal Care", label: "Personal Care", icon: "🧴", type: "category" },
+  { id: "Cigarettes", label: "Cigarettes", icon: "🚬", type: "category" },
+  { id: "Grocery", label: "Grocery", icon: "🥫", type: "category" },
 ] as const;
 
 export const InventoryManager: React.FC<InventoryManagerProps> = ({
- inventory,
- lang,
- onRefresh,
- openAddModalPrefill,
- onClearAddModalPrefill,
- prefillAction,
- onClearPrefillAction,
+  inventory,
+  lang,
+  onRefresh,
+  openAddModalPrefill,
+  onClearAddModalPrefill,
+  prefillAction,
+  onClearPrefillAction,
+  onOpenRecommendations,
 }) => {
- const [activeFilterOption, setActiveFilterOption] = useState<string | null>(null);
- const [itemTypeFilter, setItemTypeFilter] = useState<'ALL' | 'STANDARD' | 'PACK_VARIETY'>('ALL');
- const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
- const [expandedCardId, setExpandedCardId] = useState<number | string | null>(null);
- const [selectedDetailItem, setSelectedDetailItem] = useState<InventoryItem | null>(null);
- const [selectedDetailVariantIdx, setSelectedDetailVariantIdx] = useState<number | null>(null);
+  const [activeFilterOption, setActiveFilterOption] = useState<string | null>(null);
+  const [itemTypeFilter, setItemTypeFilter] = useState<"ALL" | "STANDARD" | "PACK_VARIETY">("ALL");
+  const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
+  const [expandedCardId, setExpandedCardId] = useState<number | string | null>(null);
+  const [selectedDetailItem, setSelectedDetailItem] = useState<InventoryItem | null>(null);
+  const [selectedDetailVariantIdx, setSelectedDetailVariantIdx] = useState<number | null>(null);
 
- const handleOpenViewItem = (item: InventoryItem) => {
-  setSelectedDetailItem(item);
-  setSelectedDetailVariantIdx(null);
- };
- const dropdownRef = useRef<HTMLDivElement>(null);
+  const handleOpenViewItem = (item: InventoryItem) => {
+    setSelectedDetailItem(item);
+    setSelectedDetailVariantIdx(null);
+  };
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const { triggerTip } = useExplorationTutorial();
 
- // Top Seller Cheer Banner state
- const [isCheerBannerDismissed, setIsCheerBannerDismissed] = useState(false);
- const [cheerData, setCheerData] = useState<{
-  topSellers: string[];
-  maxQty: number;
-  totalSold: number;
- } | null>(null);
+  // Recommendations and notification states
+  const [isInsightDismissed, setIsInsightDismissed] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
- // Add / Edit Product Modal state
- const [isModalOpen, setIsModalOpen] = useState(false);
- const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
- const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
- const [itemType, setItemType] = useState<ProductItemType>('STANDARD');
- const [quickIcon, setQuickIcon] = useState('🧊');
- const [unit, setUnit] = useState('Piece');
- const [tileColor, setTileColor] = useState('');
- const [name, setName] = useState('');
- const [sku, setSku] = useState('');
- const [category, setCategory] = useState('Beverages');
- const [stock, setStock] = useState('10');
- const [unitCost, setUnitCost] = useState('10');
- const [unitPrice, setUnitPrice] = useState('12');
- const [minStockAlert, setMinStockAlert] = useState('5');
- const [variants, setVariants] = useState<InventoryVariant[]>([]);
- const [photo, setPhoto] = useState<string>('');
- const [newVariantLabel, setNewVariantLabel] = useState('');
- const [newVariantPrice, setNewVariantPrice] = useState('');
- const [newVariantStock, setNewVariantStock] = useState('');
+  // Add / Edit Product Modal states
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [sku, setSku] = useState("");
+  const [category, setCategory] = useState(PRODUCT_CATEGORIES[0]);
+  const [stock, setStock] = useState("0");
+  const [unitCost, setUnitCost] = useState("0");
+  const [unitPrice, setUnitPrice] = useState("0");
+  const [minStockAlert, setMinStockAlert] = useState("5");
+  const [unit, setUnit] = useState("pcs");
+  const [quickIcon, setQuickIcon] = useState("📦");
+  const [variants, setVariants] = useState<InventoryVariant[]>([]);
+  const [itemType, setItemType] = useState<ProductItemType>("STANDARD");
+  const [photo, setPhoto] = useState("");
+  const [newVariantLabel, setNewVariantLabel] = useState("");
+  const [newVariantPrice, setNewVariantPrice] = useState("");
+  const [newVariantStock, setNewVariantStock] = useState("");
+  const [isCompressingPhoto, setIsCompressingPhoto] = useState(false);
 
- // Add Stock Modal state
- const [addStockItem, setAddStockItem] = useState<InventoryItem | null>(null);
- const [addStockQty, setAddStockQty] = useState('1');
- const [selectedRestockVariantIdx, setSelectedRestockVariantIdx] = useState<number | 'ALL' | null>('ALL');
+  // Add Stock Modal states
+  const [addStockItem, setAddStockItem] = useState<InventoryItem | null>(null);
+  const [addStockQty, setAddStockQty] = useState("1");
+  const [selectedRestockVariantIdx, setSelectedRestockVariantIdx] = useState<number | 'ALL' | null>(null);
 
- // Sell Now Multi-Item Sale Modal state
- const [sellModalOpen, setSellModalOpen] = useState(false);
- const [initialSellProduct, setInitialSellProduct] = useState<InventoryItem | null>(null);
- const [selectedSellVariantIdx, setSelectedSellVariantIdx] = useState<number | null>(null);
- const [buyersMoneyInput, setBuyersMoneyInput] = useState('');
- const [cart, setCart] = useState<CartItem[]>([]);
- const [isAddProductPickerOpen, setIsAddProductPickerOpen] = useState(false);
- const [pickerSearchTerm, setPickerSearchTerm] = useState('');
+  // Sell Now Modal states
+  const [sellModalOpen, setSellModalOpen] = useState(false);
+  const [initialSellProduct, setInitialSellProduct] = useState<InventoryItem | null>(null);
+  const [selectedSellVariantIdx, setSelectedSellVariantIdx] = useState<number | null>(null);
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [buyersMoneyInput, setBuyersMoneyInput] = useState("");
+  const [isAddProductPickerOpen, setIsAddProductPickerOpen] = useState(false);
+  const [pickerSearchTerm, setPickerSearchTerm] = useState("");
 
- // Credit / Customer Info in SellModal
- const [creditCustomerName, setCreditCustomerName] = useState('');
- const [creditCustomerPhone, setCreditCustomerPhone] = useState('');
- const [isCreditCustomerModalOpen, setIsCreditCustomerModalOpen] = useState(false);
- const [creditErrorBanner, setCreditErrorBanner] = useState<string | null>(null);
- const [existingCustomersList, setExistingCustomersList] = useState<Customer[]>([]);
+  // Customer Credit Modal states
+  const [isCreditCustomerModalOpen, setIsCreditCustomerModalOpen] = useState(false);
+  const [creditCustomerName, setCreditCustomerName] = useState("");
+  const [creditCustomerPhone, setCreditCustomerPhone] = useState("");
+  const [creditErrorBanner, setCreditErrorBanner] = useState<string | null>(null);
+  const [existingCustomersList, setExistingCustomersList] = useState<Customer[]>([]);
 
- useEffect(() => {
-  if (sellModalOpen) {
-   db.customers
-    .toArray()
-    .then((custs) => {
-     setExistingCustomersList(custs || []);
-    })
-    .catch((err) => console.warn('[InventoryManager] Failed to fetch customer list:', err));
-  }
- }, [sellModalOpen]);
+  // Receipt Modal
+  const [activeReceipt, setActiveReceipt] = useState<Transaction | null>(null);
 
- // Sale Receipt Modal state
- const [activeReceipt, setActiveReceipt] = useState<Transaction | null>(null);
+  // Global Alert & Confirm Modals
+  const [alertState, setAlertState] = useState<{
+    isOpen: boolean;
+    title?: string;
+    message: string;
+    type?: "info" | "success" | "warning" | "error";
+  }>({ isOpen: false, message: "" });
 
- // Status message toast
- const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const showAlert = (
+    message: string,
+    title?: string,
+    type?: "info" | "success" | "warning" | "error"
+  ) => {
+    setAlertState({ isOpen: true, title, message, type });
+  };
 
- // Custom Alert Modal state
- const [alertState, setAlertState] = useState<{
-  isOpen: boolean;
-  title?: string;
-  message: string;
-  type?: 'error' | 'warning' | 'info' | 'success';
- }>({
-  isOpen: false,
-  message: '',
-  type: 'warning',
- });
+  const closeAlert = () => {
+    setAlertState((prev) => ({ ...prev, isOpen: false }));
+  };
 
- // Custom Confirm Modal state
- const [confirmState, setConfirmState] = useState<{
-  isOpen: boolean;
-  title: string;
-  message: string;
-  confirmText?: string;
-  cancelText?: string;
-  isDestructive?: boolean;
-  onConfirm: () => void;
- }>({
-  isOpen: false,
-  title: '',
-  message: '',
-  onConfirm: () => {},
- });
-
- const showAlert = (
-  message: string,
-  title?: string,
-  type: 'error' | 'warning' | 'info' | 'success' = 'warning'
- ) => {
-  console.log(`[InventoryManager] Triggering AlertModal: [${type}] ${title ? title + ' - ' : ''}${message}`);
-  setAlertState({
-   isOpen: true,
-   title,
-   message,
-   type,
+  const [confirmState, setConfirmState] = useState<{
+    isOpen: boolean;
+    title?: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    isDestructive?: boolean;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    message: "",
+    onConfirm: () => {},
   });
- };
 
- const closeAlert = () => {
-  console.log('[InventoryManager] Closing AlertModal');
-  setAlertState((prev) => ({ ...prev, isOpen: false }));
- };
-
- const closeConfirm = () => {
-  console.log('[InventoryManager] Closing ConfirmModal');
-  setConfirmState((prev) => ({ ...prev, isOpen: false }));
- };
-
- const isAnyInventoryModalOpen = Boolean(
-  isModalOpen ||
-  addStockItem !== null ||
-  sellModalOpen ||
-  isAddProductPickerOpen ||
-  isCreditCustomerModalOpen ||
-  activeReceipt !== null ||
-  alertState.isOpen ||
-  confirmState.isOpen
- );
-
- useEffect(() => {
-  if (!isAnyInventoryModalOpen) return;
-  const originalOverflow = document.body.style.overflow;
-  const originalTouchAction = document.body.style.touchAction;
-  const originalOverscroll = document.body.style.overscrollBehavior;
-
-  document.body.style.overflow = 'hidden';
-  document.body.style.touchAction = 'none';
-  document.body.style.overscrollBehavior = 'none';
-
-  return () => {
-   document.body.style.overflow = originalOverflow;
-   document.body.style.touchAction = originalTouchAction;
-   document.body.style.overscrollBehavior = originalOverscroll || '';
-  };
- }, [isAnyInventoryModalOpen]);
-
- // Close dropdown on outside click or touch
- useEffect(() => {
-  const handlePointerDown = (event: MouseEvent | TouchEvent) => {
-   if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-    console.log('[InventoryManager] Outside click/tap detected on filter dropdown, closing');
-    setIsFilterDropdownOpen(false);
-   }
+  const closeConfirm = () => {
+    setConfirmState((prev) => ({ ...prev, isOpen: false }));
   };
 
-  if (isFilterDropdownOpen) {
-   document.addEventListener('mousedown', handlePointerDown);
-   document.addEventListener('touchstart', handlePointerDown, { passive: true });
-  }
-
-  return () => {
-   document.removeEventListener('mousedown', handlePointerDown);
-   document.removeEventListener('touchstart', handlePointerDown);
-  };
- }, [isFilterDropdownOpen]);
-
- // Load yesterday's transactions on component mount to find top seller(s) for cheer banner
- useEffect(() => {
-  let isMounted = true;
-
-  const loadYesterdaySales = async () => {
-   try {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = getLocalDateStr(yesterday);
-
-    const yesterdaySales = await db.transactions
-     .filter((tx) => {
-      if (tx.type !== 'SALE') return false;
-      const txDate = tx.dateStr || getLocalDateStr(tx.timestamp);
-      return txDate === yesterdayStr;
-     })
-     .toArray();
-
-    const productQtyMap: Record<string, number> = {};
-    let totalSold = 0;
-
-    for (const tx of yesterdaySales) {
-     if (tx.items && Array.isArray(tx.items)) {
-      for (const item of tx.items) {
-       if (item && item.itemName && item.quantity > 0) {
-        const pName = item.itemName.trim();
-        productQtyMap[pName] = (productQtyMap[pName] || 0) + item.quantity;
-        totalSold += item.quantity;
-       }
+  // Load existing customers for credit suggestions
+  useEffect(() => {
+    const loadCustomers = async () => {
+      try {
+        const list = await db.customers.toArray();
+        setExistingCustomersList(list);
+      } catch (err) {
+        console.warn("Could not load customers for credit modal:", err);
       }
-     }
-    }
+    };
+    loadCustomers();
+  }, []);
 
-    const entries = Object.entries(productQtyMap);
-    if (entries.length === 0 || totalSold === 0) {
-     if (isMounted) {
-      setCheerData({ topSellers: [], maxQty: 0, totalSold: 0 });
-     }
+  // Filter & Search calculation
+  const handleSelectFilterOption = (optId: string) => {
+    const opt = INVENTORY_FILTER_OPTIONS.find((o) => o.id === optId);
+    if (!opt) return;
+    if (opt.type === "itemType") {
+      if (opt.id === "TYPE_ALL") setItemTypeFilter("ALL");
+      else if (opt.id === "TYPE_STANDARD") setItemTypeFilter("STANDARD");
+      else if (opt.id === "TYPE_PACK_VARIETY") setItemTypeFilter("PACK_VARIETY");
     } else {
-     let maxQty = 0;
-     for (const [, qty] of entries) {
-      if (qty > maxQty) {
-       maxQty = qty;
-      }
-     }
-     const topSellers = entries.filter(([, qty]) => qty === maxQty).map(([pName]) => pName);
-     if (isMounted) {
-      setCheerData({ topSellers, maxQty, totalSold });
-     }
+      setActiveFilterOption((prev) => (prev === opt.id ? null : opt.id));
     }
-   } catch (err) {
-    console.warn('[InventoryManager] Error querying yesterday transactions for cheer banner:', err);
-   }
+    setIsFilterDropdownOpen(false);
   };
 
-  loadYesterdaySales().catch((err) => {
-   console.warn('[InventoryManager] Unhandled rejection in loadYesterdaySales:', err);
-  });
-
-  return () => {
-   isMounted = false;
-  };
- }, []);
-
- const getCheerBannerMessage = () => {
-  if (!cheerData) return null;
-
-  if (cheerData.totalSold === 0 || cheerData.topSellers.length === 0) {
-   return lang === 'tl'
-    ? '😴 Medyo tahimik kahapon pero ngayon bagong simula — kaya mo yan! 💪'
-    : '😴 Slow day yesterday but today is a new chance — ikaw na! 💪';
-  }
-
-  if (cheerData.topSellers.length === 1) {
-   const product = cheerData.topSellers[0];
-   const qty = cheerData.maxQty;
-   return lang === 'tl'
-    ? `🎉 Si ${product} ang pinaka-trending kahapon! ${qty} piraso ang nabenta! Tuloy lang! 🔥`
-    : `🎉 ${product} was on FIRE yesterday! Sold ${qty} pcs! Keep that hustle going! 🔥`;
-  }
-
-  // Multiple tied top sellers
-  const list = cheerData.topSellers;
-  const joinedEn =
-   list.length === 2
-    ? `${list[0]} and ${list[1]}`
-    : `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`;
-  const joinedTl =
-   list.length === 2
-    ? `${list[0]} at ${list[1]}`
-    : `${list.slice(0, -1).join(', ')} at ${list[list.length - 1]}`;
-
-  return lang === 'tl'
-   ? `🏆 Si ${joinedTl} pareho nang nangunguna! Ang galing ng tindahan mo! 💪`
-   : `🏆 ${joinedEn} are both killing it! Your tindahan is thriving! 💪`;
- };
-
- const showNotification = (msg: string) => {
-  console.log('[InventoryManager] Toast notification:', msg);
-  setStatusMessage(msg);
-  setTimeout(() => setStatusMessage(null), 3000);
- };
-
- const handleSelectFilterOption = (optionId: string) => {
-  console.log('[InventoryManager] Filter option selected:', optionId);
-  if (optionId === 'TYPE_ALL') {
-   setItemTypeFilter('ALL');
-  } else if (optionId === 'TYPE_STANDARD') {
-   setItemTypeFilter('STANDARD');
-  } else if (optionId === 'TYPE_PACK_VARIETY') {
-   setItemTypeFilter('PACK_VARIETY');
-  } else {
-   if (activeFilterOption === optionId) {
+  const clearFilter = () => {
     setActiveFilterOption(null);
-   } else {
-    setActiveFilterOption(optionId);
-   }
-  }
-  setIsFilterDropdownOpen(false);
- };
-
- const clearFilter = () => {
-  console.log('[InventoryManager] Clear filter tapped');
-  setActiveFilterOption(null);
-  setItemTypeFilter('ALL');
-  setIsFilterDropdownOpen(false);
- };
-
- const filteredItems = (inventory || [])
-  .filter((item) => {
-   // Item Type Filter (ALL vs STANDARD vs PACK_VARIETY)
-   if (itemTypeFilter === 'STANDARD' && item.itemType === 'PACK_VARIETY') {
-    return false;
-   }
-   if (itemTypeFilter === 'PACK_VARIETY' && item.itemType !== 'PACK_VARIETY') {
-    return false;
-   }
-
-   // Category filter (if an option other than AZ_SORT is selected)
-   if (activeFilterOption && activeFilterOption !== 'AZ_SORT') {
-    if (item.category !== activeFilterOption) {
-     return false;
-    }
-   }
-
-   return true;
-  })
-  .sort((a, b) => {
-   if (activeFilterOption === 'AZ_SORT') {
-    return (a.name || '').localeCompare(b.name || '');
-   }
-   return (b.updatedAt || 0) - (a.updatedAt || 0);
-  });
-
- const lowStockItems = (inventory || []).filter((i) => {
-  const effectiveStock = i.variants && i.variants.length > 0
-   ? i.variants.reduce((sum, v) => sum + (v.stock !== undefined ? v.stock : 0), 0)
-   : i.stock;
-  return effectiveStock <= i.minStockAlert;
- });
-
- const openAddModal = (prefill?: { name?: string; sku?: string; itemType?: ProductItemType }) => {
-  console.log('[ProductModal] Opening Add Product Modal');
-  setEditingItem(null);
-  setItemType(prefill?.itemType || 'STANDARD');
-  setQuickIcon('🧊');
-  setUnit('Piece');
-  setTileColor('');
-  setName(prefill?.name || '');
-  setSku(prefill?.sku || '');
-  setCategory('Beverages');
-  setStock('10');
-  setUnitCost('10');
-  setUnitPrice('12');
-  setMinStockAlert('5');
-  setVariants([]);
-  setPhoto('');
-  setNewVariantLabel('');
-  setNewVariantPrice('');
-  setIsModalOpen(true);
- };
-
- // Open modal if scanner requests prefilled add item
- useEffect(() => {
-  if (openAddModalPrefill) {
-   openAddModal(openAddModalPrefill);
-   if (onClearAddModalPrefill) {
-    onClearAddModalPrefill();
-   }
-  }
- }, [openAddModalPrefill]);
-
- useEffect(() => {
-  if (prefillAction) {
-   const item = inventory.find(i => i.id === prefillAction.productId);
-   if (item) {
-    if (prefillAction.action === 'EDIT') {
-     openEditModal(item);
-    } else if (prefillAction.action === 'SELL') {
-     openSellNowModal(item);
-    } else if (prefillAction.action === 'VIEW') {
-     handleOpenViewItem(item);
-    }
-   }
-   if (onClearPrefillAction) {
-    onClearPrefillAction();
-   }
-  }
- }, [prefillAction, inventory, onClearPrefillAction]);
-
- const openEditModal = (item: InventoryItem) => {
-  console.log('[ProductModal] Opening Edit Product Modal for:', item);
-  setEditingItem(item);
-  setItemType(item.itemType || 'STANDARD');
-  setQuickIcon(item.quickIcon || '📦');
-  setUnit(item.unit || 'pcs');
-  setTileColor(item.tileColor || '');
-  setName(item.name);
-  setSku(item.sku || '');
-  setCategory(item.category || 'Beverages');
-  setStock(item.stock.toString());
-  setUnitCost(item.unitCost.toString());
-  setUnitPrice(item.unitPrice.toString());
-  setMinStockAlert((item.minStockAlert || 5).toString());
-  setVariants(item.variants ? [...item.variants] : []);
-  setPhoto(item.photo || '');
-  setNewVariantLabel('');
-  setNewVariantPrice('');
-  setIsModalOpen(true);
- };
-
- const handleAddVariantItem = () => {
-  const label = newVariantLabel.trim();
-  const price = parseFloat(newVariantPrice);
-  const vStock = newVariantStock.trim() !== '' ? parseInt(newVariantStock, 10) : undefined;
-
-  if (!label) {
-   showAlert(
-    lang === 'tl' ? 'Maglagay ng pangalan ng variant (hal. ½kg, 1kg)' : 'Please enter variant label (e.g. ½kg, 1kg)',
-    'Kulang na Sukat',
-    'warning'
-   );
-   return;
-  }
-  if (isNaN(price) || price < 0) {
-   showAlert(
-    lang === 'tl' ? 'Maglagay ng wastong presyo ng variant.' : 'Please enter a valid price for the variant.',
-    'Invalid Price',
-    'warning'
-   );
-   return;
-  }
-  setVariants((prev) => [
-   ...prev,
-   {
-    label,
-    unitPrice: price,
-    stock: vStock !== undefined && !isNaN(vStock) && vStock >= 0 ? vStock : undefined,
-   },
-  ]);
-  setNewVariantLabel('');
-  setNewVariantPrice('');
-  setNewVariantStock('');
- };
-
- const handleRemoveVariantItem = (idxToRemove: number) => {
-  setVariants((prev) => prev.filter((_, idx) => idx !== idxToRemove));
- };
-
- const [isCompressingPhoto, setIsCompressingPhoto] = useState(false);
-
- const handlePhotoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
-
-  try {
-   setIsCompressingPhoto(true);
-   const compressedBase64 = await compressImage(file, 600, 0.78);
-   setPhoto(compressedBase64);
-  } catch (err) {
-   console.warn('[InventoryManager] Auto compression failed, falling back to raw reader:', err);
-   const reader = new FileReader();
-   reader.onload = () => {
-    const result = reader.result as string;
-    setPhoto(result);
-   };
-   reader.readAsDataURL(file);
-  } finally {
-   setIsCompressingPhoto(false);
-   e.target.value = '';
-  }
- };
-
- const handleSaveProduct = async (e: React.FormEvent) => {
-  e.preventDefault();
-  console.log('[ProductModal] Submitting product form:', { name, category, stock, unitCost, unitPrice, minStockAlert });
-
-  const trimmedName = name.trim();
-  if (!trimmedName) {
-   showAlert(
-    lang === 'tl' ? 'Mangyaring ilagay ang pangalan ng paninda.' : 'Please enter the product name.',
-    'Kulang na Impormasyon',
-    'warning'
-   );
-   return;
-  }
-
-  if (stock.trim() === '' || isNaN(Number(stock))) {
-   showAlert(
-    lang === 'tl' ? 'Mangyaring maglagay ng wastong dami ng stock.' : 'Please enter a valid stock quantity.',
-    'Invalid Stock',
-    'warning'
-   );
-   return;
-  }
-
-  if (unitCost.trim() === '' || isNaN(Number(unitCost))) {
-   showAlert(
-    lang === 'tl' ? 'Mangyaring maglagay ng wastong puhunan / cost price.' : 'Please enter a valid cost price.',
-    'Invalid Cost Price',
-    'warning'
-   );
-   return;
-  }
-
-  if (unitPrice.trim() === '' || isNaN(Number(unitPrice))) {
-   showAlert(
-    lang === 'tl' ? 'Mangyaring maglagay ng wastong presyo ng benta.' : 'Please enter a valid selling price.',
-    'Invalid Selling Price',
-    'warning'
-   );
-   return;
-  }
-
-  if (minStockAlert.trim() === '' || isNaN(Number(minStockAlert))) {
-   showAlert(
-    lang === 'tl' ? 'Mangyaring maglagay ng wastong min stock alert.' : 'Please enter a valid min stock alert.',
-    'Invalid Min Stock',
-    'warning'
-   );
-   return;
-  }
-
-  const parsedStock = Math.floor(Number(stock));
-  const parsedUnitCost = Number(unitCost);
-  const parsedUnitPrice = Number(unitPrice);
-  const parsedMinStock = Math.floor(Number(minStockAlert));
-
-  if (parsedStock < 0 || parsedUnitCost < 0 || parsedUnitPrice < 0 || parsedMinStock < 1) {
-   showAlert(
-    lang === 'tl'
-     ? 'Ang stock at presyo ay dapat 0 pataas, at ang min stock alert ay dapat 1 pataas.'
-     : 'Stock and prices must be 0 or greater, and minimum stock alert must be at least 1.',
-    'Invalid Values',
-    'warning'
-   );
-   return;
-  }
-
-  try {
-   // Check for duplicate name if adding or renaming
-   const existing = await db.inventory.where('name').equalsIgnoreCase(trimmedName).first();
-   if (existing && (!editingItem || existing.id !== editingItem.id)) {
-    showAlert(
-     lang === 'tl'
-      ? `May existing paninda na may pangalang "${trimmedName}". Mangyaring gumamit ng ibang pangalan.`
-      : `A product with the name "${trimmedName}" already exists. Please choose a different name.`,
-     'Duplicate Name',
-     'warning'
-    );
-    return;
-   }
-
-   let validStock = parsedStock;
-   const validUnitCost = parsedUnitCost;
-   const validUnitPrice = parsedUnitPrice;
-   const validMinStockAlert = parsedMinStock;
-
-   // Auto-commit any pending variant inputs if user filled them before tapping Save
-   let finalVariants = [...variants];
-   if (newVariantLabel.trim() !== '') {
-    const pPrice = parseFloat(newVariantPrice);
-    const pStock = newVariantStock.trim() !== '' ? parseInt(newVariantStock, 10) : undefined;
-    if (!isNaN(pPrice) && pPrice >= 0) {
-     finalVariants.push({
-      label: newVariantLabel.trim(),
-      unitPrice: pPrice,
-      stock: pStock !== undefined && !isNaN(pStock) && pStock >= 0 ? pStock : undefined,
-     });
-    }
-   }
-   
-   if (finalVariants.length > 0) {
-    validStock = finalVariants.reduce((sum, v) => sum + (v.stock !== undefined ? v.stock : 0), 0);
-   }
-
-   if (editingItem && editingItem.id) {
-    console.log(`[ProductModal] Updating existing product ID ${editingItem.id}`);
-    await db.inventory.update(editingItem.id, {
-     name: trimmedName,
-     sku: sku.trim() || undefined,
-     category,
-     stock: validStock,
-     unitCost: validUnitCost,
-     unitPrice: validUnitPrice,
-     minStockAlert: validMinStockAlert,
-     itemType,
-     quickIcon,
-     unit,
-     tileColor: tileColor || undefined,
-     variants: finalVariants,
-     photo: photo || undefined,
-     updatedAt: Date.now(),
-    });
-    showNotification(lang === 'tl' ? 'Matagumpay na na-update ang paninda!' : 'Product updated successfully!');
-   } else {
-    console.log('[ProductModal] Inserting new product into inventory');
-    await db.inventory.add({
-     name: trimmedName,
-     sku: sku.trim() || undefined,
-     category,
-     stock: validStock,
-     unitCost: validUnitCost,
-     unitPrice: validUnitPrice,
-     minStockAlert: validMinStockAlert,
-     itemType,
-     quickIcon,
-     unit,
-     tileColor: tileColor || undefined,
-     variants: finalVariants,
-     photo: photo || undefined,
-     updatedAt: Date.now(),
-    });
-    showNotification(lang === 'tl' ? 'Matagumpay na naidagdag ang bagong paninda!' : 'New product added successfully!');
-   }
-
-   setIsModalOpen(false);
-   onRefresh();
-  } catch (err: any) {
-   console.error('[ProductModal] Failed to save product:', err);
-   showAlert('Error saving product: ' + (err.message || 'Unknown error'), 'Database Error', 'error');
-  }
- };
-
- // Open Add Stock Modal
- const openAddStockModal = (item: InventoryItem) => {
-  console.log('[AddStockModal] Opening Add Stock Modal for:', item.name);
-  setAddStockItem(item);
-  setAddStockQty('1');
-  setSelectedRestockVariantIdx(item.variants && item.variants.length > 0 ? null : 'ALL');
- };
-
- // Confirm Add Stock
- const handleConfirmAddStock = async () => {
-  if (!addStockItem || !addStockItem.id) return;
-  console.log('[AddStockModal] Confirming stock addition:', { product: addStockItem.name, addQty: addStockQty, selectedVariant: selectedRestockVariantIdx });
-
-  if (addStockQty.trim() === '' || isNaN(Number(addStockQty))) {
-   showAlert(
-    lang === 'tl' ? 'Mangyaring maglagay ng wastong dami (1 o pataas).' : 'Please enter a valid quantity (1 or more).',
-    'Invalid Quantity',
-    'warning'
-   );
-   return;
-  }
-
-  const qtyToAdd = Math.floor(Number(addStockQty));
-  if (qtyToAdd < 1) {
-   showAlert(
-    lang === 'tl' ? 'Mangyaring maglagay ng wastong dami (1 o pataas).' : 'Please enter a valid quantity (1 or more).',
-    'Invalid Quantity',
-    'warning'
-   );
-   return;
-  }
-
-  const newTotalStock = addStockItem.stock + qtyToAdd;
-
-  // Handle variant-specific stock update if a variant was selected
-  let updatedVariants = addStockItem.variants ? [...addStockItem.variants] : undefined;
-  let variantNoteSuffix = '';
-  if (
-   typeof selectedRestockVariantIdx === 'number' &&
-   updatedVariants &&
-   updatedVariants[selectedRestockVariantIdx]
-  ) {
-   const v = updatedVariants[selectedRestockVariantIdx];
-   const prevVStock = v.stock ?? 0;
-   updatedVariants[selectedRestockVariantIdx] = {
-    ...v,
-    stock: prevVStock + qtyToAdd,
-   };
-   variantNoteSuffix = ` (${v.label})`;
-  }
-
-  try {
-   console.log(`[AddStockModal] Updating stock in DB for ID ${addStockItem.id} to ${newTotalStock}`);
-   await db.inventory.update(addStockItem.id, {
-    stock: newTotalStock,
-    variants: updatedVariants,
-    updatedAt: Date.now(),
-   });
-
-   const todayStr = getLocalDateStr();
-   const restockTotalCost = (addStockItem.unitCost || 0) * qtyToAdd;
-
-   await db.transactions.add({
-    timestamp: Date.now(),
-    dateStr: todayStr,
-    type: 'RESTOCK',
-    items: [{ itemName: `${addStockItem.name}${variantNoteSuffix}`, quantity: qtyToAdd, totalPrice: restockTotalCost }],
-    totalAmount: restockTotalCost,
-    rawNote: `restock ${qtyToAdd} ${addStockItem.name}${variantNoteSuffix}`,
-    syncStatus: 'LOCAL',
-   });
-   console.log('[AddStockModal] RESTOCK transaction logged successfully');
-
-   showNotification(`Added ${qtyToAdd} pcs to ${addStockItem.name}${variantNoteSuffix}`);
-   setAddStockItem(null);
-   onRefresh();
-  } catch (err: any) {
-   console.error('[AddStockModal] Add stock error:', err);
-   showAlert('Failed to add stock: ' + (err.message || 'Unknown error'), 'Stock Update Error', 'error');
-  }
- };
-
- // Open Sell Now Multi-Item Sale Modal
- const openSellNowModal = (item: InventoryItem, variantIdx: number | null = null) => {
-  if (!item.id) return;
-  console.log('[SellModal] Opening Sell Now Modal for product:', item.name);
-  setInitialSellProduct(item);
-  setBuyersMoneyInput('');
-  setIsAddProductPickerOpen(false);
-  setPickerSearchTerm('');
-  setCreditCustomerName('');
-  setCreditCustomerPhone('');
-  setIsCreditCustomerModalOpen(false);
-  setCreditErrorBanner(null);
-
-  const hasVariants = item.variants && item.variants.length > 0;
-  const initialVariantIdx = variantIdx !== null ? variantIdx : (hasVariants ? 0 : null);
-  const firstVariant = initialVariantIdx !== null && item.variants ? item.variants[initialVariantIdx] : undefined;
-  const initialPrice = firstVariant ? firstVariant.unitPrice : item.unitPrice;
-  const initialName = firstVariant ? `${item.name} (${firstVariant.label})` : item.name;
-  const initialStock = firstVariant?.stock !== undefined ? firstVariant.stock : item.stock;
-
-  setSelectedSellVariantIdx(initialVariantIdx);
-
-  // Pre-add the tapped product with quantity 1
-  const initialCartItem: CartItem = {
-   id: `${item.id}-${Date.now()}`,
-   productId: item.id,
-   name: initialName,
-   unitPrice: initialPrice,
-   availableStock: initialStock,
-   quantity: 1,
-   variantLabel: firstVariant?.label,
-   variantIndex: hasVariants ? 0 : undefined,
+    setItemTypeFilter("ALL");
+    setIsFilterDropdownOpen(false);
   };
-  setCart([initialCartItem]);
-  setSellModalOpen(true);
- };
 
- // Add another product to cart from picker (merges duplicate if already in cart)
- const handleAddProductToCart = (product: InventoryItem, variant?: InventoryVariant, variantIdx?: number) => {
-  if (!product.id) return;
-  console.log('[SellModal] Adding or incrementing product in cart:', product.name, variant?.label);
-
-  const displayName = variant ? `${product.name} (${variant.label})` : product.name;
-  const itemPrice = variant ? variant.unitPrice : product.unitPrice;
-  const availStock = variant?.stock !== undefined ? variant.stock : product.stock;
-
-  setCart((prev) => {
-   const existingItemIndex = prev.findIndex(
-    (it) => it.productId === product.id && it.name === displayName
-   );
-
-   if (existingItemIndex > -1) {
-    // Product is already in the cart: increment quantity if below availableStock
-    return prev.map((item, idx) => {
-     if (idx === existingItemIndex) {
-      const nextQty = item.quantity < item.availableStock ? item.quantity + 1 : item.quantity;
-      return {
-       ...item,
-       availableStock: availStock, // keep fresh stock value
-       quantity: nextQty,
-      };
-     }
-     return item;
+  const lowStockItems = useMemo(() => {
+    return inventory.filter((it) => {
+      const threshold = typeof it.minStockAlert === "number" ? it.minStockAlert : (it.lowStockThreshold || 5);
+      const effectiveStock = it.variants && it.variants.length > 0
+        ? it.variants.reduce((sum, v) => sum + (v.stock !== undefined ? v.stock : 0), 0)
+        : it.stock;
+      return effectiveStock <= threshold;
     });
-   }
+  }, [inventory]);
 
-   // Product is not yet in the cart: add as a new cart item with quantity 1
-   const newCartItem: CartItem = {
-    id: `${product.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    productId: product.id,
-    name: displayName,
-    unitPrice: itemPrice,
-    availableStock: availStock,
-    quantity: 1,
-    variantLabel: variant?.label,
-    variantIndex: variantIdx,
-   };
-   return [...prev, newCartItem];
-  });
-
-  setIsAddProductPickerOpen(false);
-  setPickerSearchTerm('');
- };
-
- const handleUpdateCartItemQty = (cartItemId: string, newQty: number) => {
-  console.log(`[SellModal] Updating cart line ${cartItemId} to quantity:`, newQty);
-  setCart((prev) =>
-   prev.map((it) => {
-    if (it.id === cartItemId) {
-     const clamped = Math.max(1, Math.min(it.availableStock, newQty || 1));
-     return { ...it, quantity: clamped };
+  const filteredItems = useMemo(() => {
+    let result = [...inventory];
+    if (itemTypeFilter === "STANDARD") {
+      result = result.filter((it) => !it.itemType || it.itemType === "STANDARD");
+    } else if (itemTypeFilter === "PACK_VARIETY") {
+      result = result.filter((it) => it.itemType === "PACK_VARIETY");
     }
-    return it;
-   })
-  );
- };
 
- const handleRemoveCartItem = (cartItemId: string) => {
-  console.log(`[SellModal] Removing cart item line ${cartItemId}`);
-  setCart((prev) => prev.filter((it) => it.id !== cartItemId));
- };
-
- // Calculate cart totals
- const totalSaleAmount = cart.reduce((sum, it) => sum + it.quantity * it.unitPrice, 0);
- const parsedBuyersMoney =
-  buyersMoneyInput.trim() !== '' && !isNaN(Number(buyersMoneyInput))
-   ? Number(buyersMoneyInput)
-   : null;
-
- const isBudgetEntered = parsedBuyersMoney !== null;
- const budgetDifference = isBudgetEntered ? parsedBuyersMoney - totalSaleAmount : 0;
- const hasInsufficientBudget = isBudgetEntered && budgetDifference < 0;
-
- // Check if aggregate quantity of any product in cart exceeds available stock
- const aggregateQtyByProduct: Record<number, number> = {};
- cart.forEach((it) => {
-  aggregateQtyByProduct[it.productId] = (aggregateQtyByProduct[it.productId] || 0) + it.quantity;
- });
-
- const hasExceededStock = cart.some((it) => {
-  const totalQtyWanted = aggregateQtyByProduct[it.productId] || 0;
-  return totalQtyWanted > it.availableStock;
- });
-
- const isCartEmpty = cart.length === 0;
-
- // Confirm Multi-Item Sale
- const handleConfirmSellNow = async () => {
-  console.log('[SellModal] handleConfirmSellNow invoked');
-  if (isCartEmpty) {
-   showAlert(
-    lang === 'tl' ? 'Walang produkto sa cart.' : 'Your cart is empty.',
-    'Cart Empty',
-    'warning'
-   );
-   return;
-  }
-
-  if (hasExceededStock) {
-   showAlert(
-    lang === 'tl'
-     ? 'May produkto sa cart na lumalagpas sa kasalukuyang stock!'
-     : 'One or more items in the cart exceed available stock!',
-    'Exceeded Stock',
-    'warning'
-   );
-   return;
-  }
-
-  if (hasInsufficientBudget) {
-   showAlert(
-    lang === 'tl'
-     ? `Kulang ang bayad ng mamimili ng ${formatPeso(Math.abs(budgetDifference))}.`
-     : `Buyer's money is insufficient by ${formatPeso(Math.abs(budgetDifference))}.`,
-    'Insufficient Money',
-    'warning'
-   );
-   return;
-  }
-
-  try {
-   console.log('[SellModal] Starting sale persistence for cart items:', cart);
-   const todayStr = getLocalDateStr();
-   const timestamp = Date.now();
-
-   // Aggregate deductions per product
-   const deductionsByProduct: Record<
-    number,
-    { name: string; totalQty: number; variantDeductions: Record<string, number> }
-   > = {};
-
-   cart.forEach((it) => {
-    if (!deductionsByProduct[it.productId]) {
-     deductionsByProduct[it.productId] = {
-      name: it.name,
-      totalQty: 0,
-      variantDeductions: {},
-     };
+    if (activeFilterOption) {
+      if (activeFilterOption === "AZ_SORT") {
+        result.sort((a, b) => a.name.localeCompare(b.name));
+      } else {
+        result = result.filter((it) => it.category === activeFilterOption);
+      }
     }
-    deductionsByProduct[it.productId].totalQty += it.quantity;
-    if (it.variantLabel) {
-     deductionsByProduct[it.productId].variantDeductions[it.variantLabel] =
-      (deductionsByProduct[it.productId].variantDeductions[it.variantLabel] || 0) + it.quantity;
+    return result;
+  }, [inventory, itemTypeFilter, activeFilterOption]);
+
+  // Handle outside click for filter dropdown
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsFilterDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Pre-fill handling
+  useEffect(() => {
+    if (openAddModalPrefill) {
+      openAddModal(openAddModalPrefill);
+      onClearAddModalPrefill?.();
     }
-   });
+  }, [openAddModalPrefill]);
 
-   // Prepare items for transaction with variant labels intact
-   const transactionItems = cart.map((it) => ({
-    itemName: it.name,
-    quantity: it.quantity,
-    totalPrice: it.quantity * it.unitPrice,
-    unitPrice: it.unitPrice,
-   }));
-
-   // Description summary (e.g. "Sold: Coke 250ml ×2, Lucky Me ×1")
-   const itemsDescription = transactionItems
-    .map((it) => `${it.itemName} ×${it.quantity}`)
-    .join(', ');
-   const rawNote = `Sold: ${itemsDescription}`;
-
-   // Compound transaction execution with sequential fallback
-   let compoundTransactionSucceeded = false;
-   let savedTransactionId: number | undefined;
-
-   try {
-    console.log('[SellModal] Attempting Dexie compound transaction...');
-    await db.transaction('rw', db.inventory, db.transactions, async () => {
-     // 1. Stock check point
-     for (const [prodIdStr, deductInfo] of Object.entries(deductionsByProduct)) {
-      const prodId = Number(prodIdStr);
-      const currentItem = await db.inventory.get(prodId);
-      if (!currentItem) {
-       throw new Error(`Item "${deductInfo.name}" (ID ${prodId}) was not found in inventory.`);
+  useEffect(() => {
+    if (prefillAction) {
+      const prod = inventory.find((p) => p.id === prefillAction.productId);
+      if (prod) {
+        if (prefillAction.action === "EDIT") openEditModal(prod);
+        else if (prefillAction.action === "SELL") openSellNowModal(prod);
+        else if (prefillAction.action === "VIEW") handleOpenViewItem(prod);
       }
-      if (currentItem.stock < deductInfo.totalQty) {
-       throw new Error(`Insufficient stock for "${currentItem.name}". Required: ${deductInfo.totalQty}, Available: ${currentItem.stock}`);
-      }
-     }
+      onClearPrefillAction?.();
+    }
+  }, [prefillAction, inventory]);
 
-     // 2. Inventory deduction point
-     for (const [prodIdStr, deductInfo] of Object.entries(deductionsByProduct)) {
-      const prodId = Number(prodIdStr);
-      const currentItem = await db.inventory.get(prodId);
-      if (currentItem) {
-       let updatedVariants = currentItem.variants;
-       if (currentItem.variants && currentItem.variants.length > 0) {
-        updatedVariants = currentItem.variants.map((v) => {
-         const vWanted = deductInfo.variantDeductions[v.label] || 0;
-         if (vWanted > 0 && v.stock !== undefined) {
-          return { ...v, stock: Math.max(0, v.stock - vWanted) };
-         }
-         return v;
-        });
-       }
-       await db.inventory.update(prodId, {
-        stock: Math.max(0, currentItem.stock - deductInfo.totalQty),
-        variants: updatedVariants,
-        updatedAt: Date.now(),
-       });
-       console.log(`[SellModal] Compound tx deducted ${deductInfo.totalQty} pcs from product ID ${prodId}`);
-      }
-     }
-
-     // 3. Transaction insert point
-     savedTransactionId = Number(await db.transactions.add({
-      timestamp,
-      dateStr: todayStr,
-      type: 'SALE',
-      items: transactionItems,
-      totalAmount: totalSaleAmount,
-      rawNote,
-      syncStatus: 'LOCAL',
-     }));
-     console.log('[SellModal] Compound tx added sale record to Ledger');
+  useEffect(() => {
+    triggerTip({
+      id: "paninda_intro",
+      icon: Package,
+      title: {
+        tl: "Imbentaryo ng Tindahan (PANINDA)",
+        en: "Product Inventory (PANINDA)",
+      },
+      desc: {
+        tl: "Dito nakalista ang iyong mga paninda, puhunan, presyo ng benta (SRP), at tinatayang tubo.",
+        en: "Manage all store products, wholesale cost (Puhunan), retail price (SRP), and profit margin.",
+      },
     });
-    compoundTransactionSucceeded = true;
-   } catch (txErr: any) {
-    console.warn('[SellModal] Compound db.transaction encountered an issue, initiating sequential fallback...', txErr);
-    // Fallback sequential execution to guarantee data is saved even on WebViews with multi-table transaction limits
-    try {
-     // Pre-verify stock
-     for (const [prodIdStr, deductInfo] of Object.entries(deductionsByProduct)) {
-      const prodId = Number(prodIdStr);
-      const currentItem = await db.inventory.get(prodId);
-      if (!currentItem || currentItem.stock < deductInfo.totalQty) {
-       throw new Error(`Insufficient stock for "${currentItem?.name || deductInfo.name}" (Available: ${currentItem?.stock ?? 0})`);
-      }
-     }
+  }, [triggerTip]);
 
-     // Sequential inventory updates
-     for (const [prodIdStr, deductInfo] of Object.entries(deductionsByProduct)) {
-      const prodId = Number(prodIdStr);
-      const currentItem = await db.inventory.get(prodId);
-      if (currentItem) {
-       let updatedVariants = currentItem.variants;
-       if (currentItem.variants && currentItem.variants.length > 0) {
-        updatedVariants = currentItem.variants.map((v) => {
-         const vWanted = deductInfo.variantDeductions[v.label] || 0;
-         if (vWanted > 0 && v.stock !== undefined) {
-          return { ...v, stock: Math.max(0, v.stock - vWanted) };
-         }
-         return v;
-        });
-       }
-       await db.inventory.update(prodId, {
-        stock: Math.max(0, currentItem.stock - deductInfo.totalQty),
-        variants: updatedVariants,
-        updatedAt: Date.now(),
-       });
-       console.log(`[SellModal] Fallback deducted ${deductInfo.totalQty} pcs from product ID ${prodId}`);
-      }
-     }
-
-     // Sequential transaction write
-     savedTransactionId = Number(await db.transactions.add({
-      timestamp,
-      dateStr: todayStr,
-      type: 'SALE',
-      items: transactionItems,
-      totalAmount: totalSaleAmount,
-      rawNote,
-      syncStatus: 'LOCAL',
-     }));
-     console.log('[SellModal] Fallback sequential write completed successfully');
-     compoundTransactionSucceeded = true;
-    } catch (fallbackErr: any) {
-     console.error('[SellModal] Fallback sequential write failed:', fallbackErr);
-     throw new Error(fallbackErr.message || txErr.message || 'Database write error');
-    }
-   }
-
-   if (!compoundTransactionSucceeded) {
-    throw new Error('Transaction was not recorded.');
-   }
-
-   // Show receipt modal
-   const receipt: Transaction = {
-    id: savedTransactionId,
-    timestamp,
-    dateStr: getLocalDateStr(timestamp),
-    type: 'SALE',
-    items: transactionItems,
-    totalAmount: totalSaleAmount,
-    rawNote: isBudgetEntered ? `Tendered: ${parsedBuyersMoney}, Change: ${budgetDifference}` : '',
-    syncStatus: 'LOCAL'
-   };
-
-   console.log('[SellModal] Sale completed successfully, showing receipt:', receipt);
-   setSellModalOpen(false);
-   setCart([]);
-   setInitialSellProduct(null);
-   setActiveReceipt(receipt);
-   onRefresh();
-  } catch (err: any) {
-   console.error('[SellModal] Sale error:', err);
-   showAlert('Failed to record sale: ' + (err.message || 'Unknown error'), 'Sale Error', 'error');
-  }
- };
-
- // Open Credit Popup Modal from Sell Modal
- const handleOpenCreditModal = () => {
-  console.log('[SellModal] Opening Credit Customer Details Popup Modal');
-  if (isCartEmpty) {
-   showAlert(
-    lang === 'tl' ? 'Walang produkto sa cart.' : 'Your cart is empty.',
-    'Cart Empty',
-    'warning'
-   );
-   return;
-  }
-
-  if (hasExceededStock) {
-   showAlert(
-    lang === 'tl'
-     ? 'May produkto sa cart na lumalagpas sa kasalukuyang stock!'
-     : 'One or more items in the cart exceed available stock!',
-    'Exceeded Stock',
-    'warning'
-   );
-   return;
-  }
-
-  setCreditErrorBanner(null);
-  setIsCreditCustomerModalOpen(true);
- };
-
- // Confirm Credit Sale (Pautang)
- const handleConfirmCreditNow = async () => {
-  console.log('[SellModal] handleConfirmCreditNow invoked');
-  if (isCartEmpty) {
-   showAlert(
-    lang === 'tl' ? 'Walang produkto sa cart.' : 'Your cart is empty.',
-    'Cart Empty',
-    'warning'
-   );
-   return;
-  }
-
-  if (hasExceededStock) {
-   showAlert(
-    lang === 'tl'
-     ? 'May produkto sa cart na lumalagpas sa kasalukuyang stock!'
-     : 'One or more items in the cart exceed available stock!',
-    'Exceeded Stock',
-    'warning'
-   );
-   return;
-  }
-
-  const trimmedCustName = creditCustomerName.trim();
-  if (!trimmedCustName) {
-   const msg =
-    lang === 'tl'
-     ? 'Kailangan muna ang pangalan ng suki bago mag-pautang!'
-     : 'Customer name is required first for credit purchase!';
-   setCreditErrorBanner(msg);
-   showNotification(msg);
-   return;
-  }
-
-  try {
-   console.log('[SellModal] Starting credit sale persistence for customer:', trimmedCustName);
-   const todayStr = getLocalDateStr();
-   const timestamp = Date.now();
-
-   // Aggregate deductions per product
-   const deductionsByProduct: Record<
-    number,
-    { name: string; totalQty: number; variantDeductions: Record<string, number> }
-   > = {};
-
-   cart.forEach((it) => {
-    if (!deductionsByProduct[it.productId]) {
-     deductionsByProduct[it.productId] = {
-      name: it.name,
-      totalQty: 0,
-      variantDeductions: {},
-     };
-    }
-    deductionsByProduct[it.productId].totalQty += it.quantity;
-    if (it.variantLabel) {
-     deductionsByProduct[it.productId].variantDeductions[it.variantLabel] =
-      (deductionsByProduct[it.productId].variantDeductions[it.variantLabel] || 0) + it.quantity;
-    }
-   });
-
-   const transactionItems = cart.map((it) => ({
-    itemName: it.name,
-    quantity: it.quantity,
-    totalPrice: it.quantity * it.unitPrice,
-    unitPrice: it.unitPrice,
-   }));
-
-   const itemsDescription = transactionItems
-    .map((it) => `${it.itemName} ×${it.quantity}`)
-    .join(', ');
-
-   const rawNote =
-    lang === 'tl'
-     ? `pautang ${trimmedCustName} (kinuha ni ${trimmedCustName}) ${itemsDescription} ${totalSaleAmount}`
-     : `credit ${trimmedCustName} (taken by ${trimmedCustName}) ${itemsDescription} ${totalSaleAmount}`;
-
-   // 1. Customer record update or creation in db.customers
-   const existingCust = await db.customers
-    .where('name')
-    .equalsIgnoreCase(trimmedCustName)
-    .first();
-
-   if (existingCust && existingCust.id) {
-    await db.customers.update(existingCust.id, {
-     currentBalance: existingCust.currentBalance + totalSaleAmount,
-     lastTransactionAt: timestamp,
-     phone: creditCustomerPhone.trim() || existingCust.phone,
-    });
-    console.log(`[SellModal] Updated customer "${trimmedCustName}" balance in db.customers`);
-   } else {
-    await db.customers.add({
-     name: trimmedCustName,
-     phone: creditCustomerPhone.trim() || undefined,
-     currentBalance: totalSaleAmount,
-     lastTransactionAt: timestamp,
-    });
-    console.log(`[SellModal] Created new customer "${trimmedCustName}" in db.customers`);
-   }
-
-   // 2. Inventory stock deduction
-   for (const [prodIdStr, deductInfo] of Object.entries(deductionsByProduct)) {
-    const prodId = Number(prodIdStr);
-    const currentItem = await db.inventory.get(prodId);
-    if (currentItem) {
-     let updatedVariants = currentItem.variants;
-     if (currentItem.variants && currentItem.variants.length > 0) {
-      updatedVariants = currentItem.variants.map((v) => {
-       const vWanted = deductInfo.variantDeductions[v.label] || 0;
-       if (vWanted > 0 && v.stock !== undefined) {
-        return { ...v, stock: Math.max(0, v.stock - vWanted) };
-       }
-       return v;
+  useEffect(() => {
+    if (inventory.length > 0) {
+      triggerTip({
+        id: "paninda_first_product",
+        icon: Package,
+        title: {
+          tl: "Kalkulasyon ng Tubo",
+          en: "Profit Calculation",
+        },
+        desc: {
+          tl: "Awtomatikong kinakalkula ng app ang iyong kikitain sa bawat piraso batay sa iyong Puhunan at Presyo.",
+          en: "The app automatically computes your estimated profit (Tubo) per item based on cost and retail price.",
+        },
       });
-     }
-     await db.inventory.update(prodId, {
-      stock: Math.max(0, currentItem.stock - deductInfo.totalQty),
-      variants: updatedVariants,
-      updatedAt: timestamp,
-     });
-     console.log(`[SellModal] Deducted ${deductInfo.totalQty} pcs from product ID ${prodId}`);
+
+      const hasLowStock = inventory.some((it) => it.stock <= (it.lowStockThreshold || 5));
+      if (hasLowStock) {
+        triggerTip({
+          id: "paninda_low_stock",
+          icon: AlertTriangle,
+          title: {
+            tl: "Paubos na Paninda",
+            en: "Low Stock Warning",
+          },
+          desc: {
+            tl: "Nagiging kulay orange/pula ang badge kapag malapit nang maubos ang produkto para makapag-restock ka agad bago maubusan.",
+            en: "Badges turn warning colored when stock is low so you can restock before running out.",
+          },
+        });
+      }
     }
-   }
+  }, [inventory, triggerTip]);
 
-   // 3. Log PAUTANG_RECORD transaction in db.transactions
-   const creditTxId = Number(await db.transactions.add({
-    timestamp,
-    dateStr: todayStr,
-    type: 'PAUTANG_RECORD',
-    customerName: trimmedCustName,
-    handledBy: trimmedCustName,
-    items: transactionItems,
-    totalAmount: totalSaleAmount,
-    rawNote,
-    notes: lang === 'tl' ? `Kinuha ni: ${trimmedCustName}` : `Taken by: ${trimmedCustName}`,
-    syncStatus: 'LOCAL',
-   }));
-   console.log('[SellModal] Logged PAUTANG_RECORD transaction to Ledger');
+  // Product Add / Edit Handlers
+  const openAddModal = (prefill?: { name?: string; sku?: string; itemType?: ProductItemType }) => {
+    setEditingItem(null);
+    setName(prefill?.name || "");
+    setSku(prefill?.sku || "");
+    setCategory(PRODUCT_CATEGORIES[0]);
+    setStock("0");
+    setUnitCost("0");
+    setUnitPrice("0");
+    setMinStockAlert("5");
+    setUnit("pcs");
+    setQuickIcon("📦");
+    setVariants([]);
+    setItemType(prefill?.itemType || "STANDARD");
+    setPhoto("");
+    setNewVariantLabel("");
+    setNewVariantPrice("");
+    setNewVariantStock("");
+    setIsModalOpen(true);
+  };
 
-   // 4. Show Receipt Modal with Credit flag
-   const receipt: Transaction = {
-    id: creditTxId,
-    timestamp,
-    dateStr: getLocalDateStr(timestamp),
-    type: 'PAUTANG_RECORD',
-    items: transactionItems,
-    totalAmount: totalSaleAmount,
-    customerName: trimmedCustName,
-    rawNote: creditCustomerPhone.trim() ? `Contact: ${creditCustomerPhone.trim()}` : '',
-    syncStatus: 'LOCAL'
-   };
+  const openEditModal = (item: InventoryItem) => {
+    setEditingItem(item);
+    setName(item.name);
+    setSku(item.sku || "");
+    setCategory(item.category || PRODUCT_CATEGORIES[0]);
+    setStock(item.stock.toString());
+    setUnitCost(item.unitCost.toString());
+    setUnitPrice(item.unitPrice.toString());
+    setMinStockAlert((item.minStockAlert ?? 5).toString());
+    setUnit(item.unit || "pcs");
+    setQuickIcon(item.quickIcon || "📦");
+    setVariants(item.variants ? [...item.variants] : []);
+    setItemType(item.itemType || "STANDARD");
+    setPhoto(item.photo || "");
+    setNewVariantLabel("");
+    setNewVariantPrice("");
+    setNewVariantStock("");
+    setIsModalOpen(true);
+  };
 
-   showNotification(
-    lang === 'tl'
-     ? `Naitala ang pautang para kay ${trimmedCustName} (${formatPeso(totalSaleAmount)})`
-     : `Recorded credit purchase for ${trimmedCustName} (${formatPeso(totalSaleAmount)})`
-   );
-
-   setSellModalOpen(false);
-   setCart([]);
-   setInitialSellProduct(null);
-   setCreditCustomerName('');
-   setCreditCustomerPhone('');
-   setIsCreditCustomerModalOpen(false);
-   setActiveReceipt(receipt);
-   onRefresh();
-  } catch (err: any) {
-   console.error('[SellModal] Credit sale error:', err);
-   showAlert('Failed to record credit sale: ' + (err.message || 'Unknown error'), 'Credit Error', 'error');
-  }
- };
-
- const handleDeleteItem = (item?: InventoryItem) => {
-  if (!item || !item.id) return;
-  console.log('[InventoryManager] Requesting delete confirmation for product:', item.name);
-
-  setConfirmState({
-   isOpen: true,
-   title: lang === 'tl' ? 'Burahin ang Paninda' : 'Delete Product',
-   message:
-    lang === 'tl'
-     ? `Sigurado ka bang nais mong tanggalin si "${item.name}" sa paninda?`
-     : `Are you sure you want to delete "${item.name}" from your inventory?`,
-   confirmText: lang === 'tl' ? 'Oo, Burahin' : 'Delete',
-   cancelText: lang === 'tl' ? 'Kanselahin' : 'Cancel',
-   isDestructive: true,
-   onConfirm: async () => {
+  const handlePhotoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsCompressingPhoto(true);
     try {
-     console.log(`[InventoryManager] Deleting product ID ${item.id} from database`);
-     await db.inventory.delete(item.id!);
-     showNotification(lang === 'tl' ? 'Nai-delete na ang paninda.' : 'Product deleted.');
-     closeConfirm();
-     onRefresh();
-    } catch (err: any) {
-     console.error('[InventoryManager] Error deleting item:', err);
-     showAlert('Failed to delete item: ' + (err.message || 'Unknown error'), 'Delete Error', 'error');
-     closeConfirm();
+      const compressed = await compressImage(file, 600, 0.7);
+      setPhoto(compressed);
+    } catch (err) {
+      console.error("Photo compression error:", err);
+      showAlert(
+        lang === "tl" ? "Nabigong i-compress ang larawan." : "Failed to compress photo.",
+        "Error",
+        "error"
+      );
+    } finally {
+      setIsCompressingPhoto(false);
     }
-   },
-  });
- };
+  };
 
- return (
-  <div id="inventory-manager-container" className="space-y-4">
-   {/* Top Seller Cheer Banner */}
-   {!isCheerBannerDismissed && cheerData && (
-    <div
-     id="top-seller-cheer-banner"
-     className="theme-card p-3.5 sm:p-4 rounded-3xl border border-amber-500/30 bg-amber-500/10 shadow-2xs flex items-center justify-between gap-3 animate-in fade-in transition-all"
-    >
-     <div className="flex items-center gap-2.5 min-w-0 flex-1">
-      <span className="text-xs sm:text-sm font-black theme-text-app leading-snug">
-       {getCheerBannerMessage()}
+  const handleAddVariantItem = () => {
+    if (!newVariantLabel.trim() || !newVariantPrice.trim()) {
+      showAlert(
+        lang === "tl" ? "Punan ang label at presyo ng variant." : "Fill in variant label and price.",
+        lang === "tl" ? "Kulang na Datos" : "Missing Information",
+        "warning"
+      );
+      return;
+    }
+    const vPrice = parseFloat(newVariantPrice) || 0;
+    const vStock = parseInt(newVariantStock, 10) || 0;
+    setVariants((prev) => [
+      ...prev,
+      {
+        label: newVariantLabel.trim(),
+        unitPrice: vPrice,
+        stock: vStock,
+      },
+    ]);
+    setNewVariantLabel("");
+    setNewVariantPrice("");
+    setNewVariantStock("");
+  };
+
+  const handleRemoveVariantItem = (idx: number) => {
+    setVariants((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleSaveProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) {
+      showAlert(
+        lang === "tl" ? "Pakilagay ang pangalan ng produkto." : "Please enter product name.",
+        lang === "tl" ? "Kulang na Datos" : "Missing Data",
+        "warning"
+      );
+      return;
+    }
+
+    const parsedStock = parseInt(stock, 10) || 0;
+    const parsedCost = parseFloat(unitCost) || 0;
+    const parsedPrice = parseFloat(unitPrice) || 0;
+    const parsedMinAlert = parseInt(minStockAlert, 10) || 5;
+
+    const productData: Omit<InventoryItem, "id"> = {
+      name: name.trim(),
+      sku: sku.trim() || undefined,
+      category,
+      stock: variants.length > 0 ? variants.reduce((sum, v) => sum + (v.stock ?? 0), 0) : parsedStock,
+      unitCost: parsedCost,
+      unitPrice: parsedPrice,
+      minStockAlert: parsedMinAlert,
+      unit: unit.trim() || "pcs",
+      quickIcon: quickIcon || "📦",
+      variants: variants.length > 0 ? variants : undefined,
+      itemType,
+      photo: photo || undefined,
+      
+      syncStatus: "LOCAL",
+    };
+
+    try {
+      if (editingItem && editingItem.id) {
+        await db.inventory.update(editingItem.id, productData);
+        showAlert(
+          lang === "tl" ? `Na-update ang "${name}".` : `"${name}" updated successfully.`,
+          lang === "tl" ? "Na-update" : "Success",
+          "success"
+        );
+      } else {
+        await db.inventory.add({
+          ...productData,
+          
+        } as unknown as InventoryItem);
+        showAlert(
+          lang === "tl" ? `Naidagdag ang "${name}".` : `"${name}" added successfully.`,
+          lang === "tl" ? "Naidagdag" : "Success",
+          "success"
+        );
+      }
+      setIsModalOpen(false);
+      onRefresh();
+    } catch (err) {
+      console.error("Error saving product:", err);
+      showAlert(
+        lang === "tl" ? "Hindi na-save ang produkto." : "Failed to save product.",
+        "Error",
+        "error"
+      );
+    }
+  };
+
+  const handleDeleteItem = (item: InventoryItem) => {
+    setConfirmState({
+      isOpen: true,
+      title: lang === "tl" ? "Burahin ang Produkto?" : "Delete Product?",
+      message: lang === "tl"
+        ? `Sigurado ka bang nais mong burahin ang "${item.name}" mula sa imbentaryo?`
+        : `Are you sure you want to delete "${item.name}" from inventory?`,
+      confirmText: lang === "tl" ? "Oo, Burahin" : "Yes, Delete",
+      cancelText: lang === "tl" ? "Kanselahin" : "Cancel",
+      isDestructive: true,
+      onConfirm: async () => {
+        closeConfirm();
+        try {
+          await db.inventory.delete(item.id!);
+          onRefresh();
+          showAlert(
+            lang === "tl" ? `Nabura na ang "${item.name}".` : `"${item.name}" deleted.`,
+            lang === "tl" ? "Nabura" : "Deleted",
+            "success"
+          );
+        } catch (e) {
+          console.error("Error deleting product:", e);
+          showAlert(
+            lang === "tl" ? "Hindi nabura ang produkto." : "Failed to delete product.",
+            "Error",
+            "error"
+          );
+        }
+      },
+    });
+  };
+
+  // Add Stock Handlers
+  const openAddStockModal = (item: InventoryItem) => {
+    setAddStockItem(item);
+    setAddStockQty("1");
+    setSelectedRestockVariantIdx(item.variants && item.variants.length > 0 ? 0 : null);
+  };
+
+  const handleConfirmAddStock = async () => {
+    if (!addStockItem) return;
+    const qty = parseInt(addStockQty, 10);
+    if (isNaN(qty) || qty <= 0) {
+      showAlert(
+        lang === "tl" ? "Maglagay ng wastong dami ng stock." : "Please enter a valid stock quantity.",
+        lang === "tl" ? "Maling Dami" : "Invalid Quantity",
+        "warning"
+      );
+      return;
+    }
+
+    try {
+      if (addStockItem.variants && addStockItem.variants.length > 0 && selectedRestockVariantIdx !== null) {
+        const updatedVariants = [...addStockItem.variants];
+        const curVar = updatedVariants[selectedRestockVariantIdx];
+        const curStock = curVar.stock !== undefined ? curVar.stock : addStockItem.stock;
+        updatedVariants[selectedRestockVariantIdx] = {
+          ...curVar,
+          stock: curStock + qty,
+        };
+        const newTotal = updatedVariants.reduce((sum, v) => sum + (v.stock ?? 0), 0);
+        await db.inventory.update(addStockItem.id!, {
+          variants: updatedVariants,
+          stock: newTotal,
+          
+        });
+      } else {
+        await db.inventory.update(addStockItem.id!, {
+          stock: addStockItem.stock + qty,
+          
+        });
+      }
+
+      setAddStockItem(null);
+      onRefresh();
+      showAlert(
+        lang === "tl"
+          ? `Matagumpay na nadagdagan ng ${qty} ang stock ng ${addStockItem.name}.`
+          : `Successfully added ${qty} stock to ${addStockItem.name}.`,
+        lang === "tl" ? "Matagumpay" : "Success",
+        "success"
+      );
+    } catch (err) {
+      console.error("Failed to add stock:", err);
+      showAlert(
+        lang === "tl" ? "Hindi naidagdag ang stock." : "Failed to add stock.",
+        "Error",
+        "error"
+      );
+    }
+  };
+
+  // Sell Now Handlers & Calculations
+  const openSellNowModal = (item: InventoryItem, variantIdx?: number | null) => {
+    setInitialSellProduct(item);
+    setSelectedSellVariantIdx(variantIdx !== undefined ? variantIdx : null);
+    setBuyersMoneyInput("");
+    setIsAddProductPickerOpen(false);
+    setPickerSearchTerm("");
+
+    if (variantIdx !== null && variantIdx !== undefined && item.variants && item.variants[variantIdx]) {
+      const v = item.variants[variantIdx];
+      const vStock = v.stock !== undefined ? v.stock : item.stock;
+      setCart([
+        {
+          id: `${item.id}-v${variantIdx}`,
+          productId: item.id!,
+          name: `${item.name} (${v.label})`,
+          unitPrice: v.unitPrice,
+          availableStock: vStock,
+          quantity: 1,
+          variantLabel: v.label,
+          variantIndex: variantIdx,
+        },
+      ]);
+    } else {
+      setCart([
+        {
+          id: `${item.id}`,
+          productId: item.id!,
+          name: item.name,
+          unitPrice: item.unitPrice,
+          availableStock: item.stock,
+          quantity: 1,
+        },
+      ]);
+    }
+    setSellModalOpen(true);
+  };
+
+  const handleAddProductToCart = (item: InventoryItem, variant?: InventoryVariant, variantIdx?: number) => {
+    const displayName = variant ? `${item.name} (${variant.label})` : item.name;
+    const availableStock = variant && variant.stock !== undefined ? variant.stock : item.stock;
+    const unitPrice = variant ? variant.unitPrice : item.unitPrice;
+    const lineId = variant ? `${item.id}-v${variantIdx}` : `${item.id}`;
+
+    setCart((prev) => {
+      const existingIndex = prev.findIndex((c) => c.id === lineId);
+      if (existingIndex >= 0) {
+        const existing = prev[existingIndex];
+        const newQty = Math.min(availableStock, existing.quantity + 1);
+        const updated = [...prev];
+        updated[existingIndex] = { ...existing, quantity: newQty };
+        return updated;
+      }
+      return [
+        ...prev,
+        {
+          id: lineId,
+          productId: item.id!,
+          name: displayName,
+          unitPrice,
+          availableStock,
+          quantity: 1,
+          variantLabel: variant?.label,
+          variantIndex: variantIdx,
+        },
+      ];
+    });
+    setIsAddProductPickerOpen(false);
+  };
+
+  const handleUpdateCartItemQty = (cartId: string, qty: number) => {
+    setCart((prev) =>
+      prev.map((c) => {
+        if (c.id === cartId) {
+          const clamped = Math.max(1, Math.min(c.availableStock, qty));
+          return { ...c, quantity: clamped };
+        }
+        return c;
+      })
+    );
+  };
+
+  const handleRemoveCartItem = (cartId: string) => {
+    setCart((prev) => prev.filter((c) => c.id !== cartId));
+  };
+
+  const totalSaleAmount = useMemo(() => {
+    return cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+  }, [cart]);
+
+  const parsedBuyersMoney = useMemo(() => {
+    return Number(buyersMoneyInput) || 0;
+  }, [buyersMoneyInput]);
+
+  const isBudgetEntered = buyersMoneyInput.trim() !== "";
+  const budgetDifference = parsedBuyersMoney - totalSaleAmount;
+  const hasInsufficientBudget = isBudgetEntered && budgetDifference < 0;
+
+  const aggregateQtyByProduct = useMemo(() => {
+    const map: Record<number, number> = {};
+    cart.forEach((c) => {
+      map[c.productId] = (map[c.productId] || 0) + c.quantity;
+    });
+    return map;
+  }, [cart]);
+
+  const hasExceededStock = useMemo(() => {
+    return cart.some((c) => c.quantity > c.availableStock);
+  }, [cart]);
+
+  const isCartEmpty = cart.length === 0;
+
+  const handleConfirmSellNow = async () => {
+    if (isCartEmpty || hasExceededStock || hasInsufficientBudget) return;
+
+    try {
+      // 1. Deduct inventory stocks
+      for (const cartItem of cart) {
+        const prod = inventory.find((p) => p.id === cartItem.productId);
+        if (!prod) continue;
+        if (cartItem.variantIndex !== undefined && prod.variants && prod.variants[cartItem.variantIndex]) {
+          const updatedVariants = [...prod.variants];
+          const curVar = updatedVariants[cartItem.variantIndex];
+          const curStock = curVar.stock !== undefined ? curVar.stock : prod.stock;
+          updatedVariants[cartItem.variantIndex] = {
+            ...curVar,
+            stock: Math.max(0, curStock - cartItem.quantity),
+          };
+          const newTotalStock = updatedVariants.reduce((sum, v) => sum + (v.stock ?? 0), 0);
+          await db.inventory.update(prod.id!, {
+            variants: updatedVariants,
+            stock: newTotalStock,
+            
+          });
+        } else {
+          await db.inventory.update(prod.id!, {
+            stock: Math.max(0, prod.stock - cartItem.quantity),
+            
+          });
+        }
+      }
+
+      // 2. Create transaction record
+      const itemsDescription = cart.map((c) => `${c.name} ×${c.quantity}`).join(", ");
+      const newTx: Transaction = {
+        timestamp: Date.now(),
+        dateStr: getLocalDateStr(),
+        type: "SALE",
+        totalAmount: totalSaleAmount,
+        items: cart.map((c) => ({
+          itemName: c.name,
+          quantity: c.quantity,
+          totalPrice: c.unitPrice * c.quantity,
+          unitPrice: c.unitPrice,
+        })),
+        rawNote: `Benta (${cart.length} uri): ${itemsDescription} = ₱${totalSaleAmount}`,
+        paymentMethod: "CASH",
+        cashTendered: isBudgetEntered ? parsedBuyersMoney : null,
+        changeAmount: isBudgetEntered && budgetDifference >= 0 ? budgetDifference : null,
+        syncStatus: "LOCAL",
+      };
+
+      const txId = await db.transactions.add(newTx);
+      const savedTx = { ...newTx, id: txId as number };
+
+      setSellModalOpen(false);
+      setCart([]);
+      setInitialSellProduct(null);
+      setIsAddProductPickerOpen(false);
+      onRefresh();
+
+      setActiveReceipt(savedTx);
+    } catch (err) {
+      console.error("Error processing sale:", err);
+      showAlert(
+        lang === "tl" ? "Nagka-error sa pagproseso ng benta." : "Error processing sale.",
+        "Error",
+        "error"
+      );
+    }
+  };
+
+  const handleConfirmCreditNow = async () => {
+    const targetName = creditCustomerName.trim();
+    if (!targetName) {
+      setCreditErrorBanner(
+        lang === "tl" ? "Kailangan ang pangalan ng suki." : "Customer name is required."
+      );
+      return;
+    }
+
+    try {
+      // 1. Deduct inventory stocks
+      for (const cartItem of cart) {
+        const prod = inventory.find((p) => p.id === cartItem.productId);
+        if (!prod) continue;
+        if (cartItem.variantIndex !== undefined && prod.variants && prod.variants[cartItem.variantIndex]) {
+          const updatedVariants = [...prod.variants];
+          const curVar = updatedVariants[cartItem.variantIndex];
+          const curStock = curVar.stock !== undefined ? curVar.stock : prod.stock;
+          updatedVariants[cartItem.variantIndex] = {
+            ...curVar,
+            stock: Math.max(0, curStock - cartItem.quantity),
+          };
+          const newTotalStock = updatedVariants.reduce((sum, v) => sum + (v.stock ?? 0), 0);
+          await db.inventory.update(prod.id!, {
+            variants: updatedVariants,
+            stock: newTotalStock,
+            
+          });
+        } else {
+          await db.inventory.update(prod.id!, {
+            stock: Math.max(0, prod.stock - cartItem.quantity),
+            
+          });
+        }
+      }
+
+      // 2. Find or create customer
+      const existing = await db.customers.where("name").equalsIgnoreCase(targetName).first();
+      if (!existing) {
+        await db.customers.add({
+          name: targetName,
+          phone: creditCustomerPhone.trim() || undefined,
+          currentBalance: totalSaleAmount, lastTransactionAt: Date.now(),
+          
+          
+        });
+      } else {
+        await db.customers.update(existing.id!, {
+          currentBalance: (existing.currentBalance || 0) + totalSaleAmount, lastTransactionAt: Date.now(),
+          phone: creditCustomerPhone.trim() || existing.phone,
+          
+        });
+      }
+
+      // 3. Create transaction record
+      const itemsDescription = cart.map((c) => `${c.name} ×${c.quantity}`).join(", ");
+      const newTx: Transaction = {
+        timestamp: Date.now(),
+        dateStr: getLocalDateStr(),
+        type: "PAUTANG_RECORD",
+        customerName: targetName,
+        handledBy: targetName,
+        totalAmount: totalSaleAmount,
+        items: cart.map((c) => ({
+          itemName: c.name,
+          quantity: c.quantity,
+          totalPrice: c.unitPrice * c.quantity,
+          unitPrice: c.unitPrice,
+        })),
+        rawNote: `Pautang kay ${targetName}: ${itemsDescription} = ₱${totalSaleAmount}`,
+        syncStatus: "LOCAL",
+      };
+
+      const txId = await db.transactions.add(newTx);
+      const savedTx = { ...newTx, id: txId as number };
+
+      setIsCreditCustomerModalOpen(false);
+      setCreditCustomerName("");
+      setCreditCustomerPhone("");
+      setCreditErrorBanner(null);
+      setSellModalOpen(false);
+      setCart([]);
+      setInitialSellProduct(null);
+      setIsAddProductPickerOpen(false);
+      onRefresh();
+
+      setActiveReceipt(savedTx);
+    } catch (err) {
+      console.error("Error processing credit:", err);
+      showAlert(
+        lang === "tl" ? "Nagka-error sa pag-record ng utang." : "Error recording credit.",
+        "Error",
+        "error"
+      );
+    }
+  };
+
+  return (
+   <div className="space-y-4">
+   {/* Recommendations Trigger */}
+   {lowStockItems.length > 0 && !isInsightDismissed && (
+    <div className="w-full bg-amber-500/10 border border-amber-500/30 p-3 rounded-2xl flex items-center justify-between animate-in fade-in">
+     <button onClick={() => onOpenRecommendations?.()} className="flex-1 text-left flex items-center gap-2 cursor-pointer">
+      <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+      <span className="text-xs font-black text-amber-900 dark:text-amber-300">
+       {lang === 'tl' ? 'Rekomendasyon' : 'Recommendation'}
       </span>
-     </div>
-     <button
-      type="button"
-      role="button"
-      tabIndex={0}
-      style={{ touchAction: 'manipulation' }}
-      onClick={() => {
-       console.log('[InventoryManager] Cheer banner dismissed');
-       setIsCheerBannerDismissed(true);
-      }}
-      onKeyDown={(e) => {
-       if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        setIsCheerBannerDismissed(true);
-       }
-      }}
-      aria-label={lang === 'tl' ? 'Isara ang paalala' : 'Dismiss banner'}
-      className="w-7 h-7 rounded-xl theme-bg-surface-subtle hover:bg-white/10 theme-text-secondary flex items-center justify-center shrink-0 cursor-pointer transition-colors select-none touch-manipulation active:scale-95"
-     >
+     </button>
+     <button onClick={() => setIsInsightDismissed(true)} className="p-1 rounded-full hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 transition-colors cursor-pointer">
       <X className="w-4 h-4" />
      </button>
     </div>
    )}
-
    {/* Toast / Notification Banner */}
    {statusMessage && (
     <div className="theme-bg-primary text-white text-xs font-black p-3 rounded-2xl flex items-center gap-2 shadow-md animate-in fade-in ">
      <CheckCircle2 className="w-4 h-4 text-white/90 shrink-0" />
      <span>{statusMessage}</span>
-    </div>
-   )}
-
-   {/* Low Stock Banner Alert */}
-   {lowStockItems.length > 0 && (
-    <div className="bg-amber-500/15 border border-amber-500/30 rounded-3xl p-4 flex items-center justify-between gap-3 text-xs theme-text-app shadow-2xs">
-     <div className="flex items-center gap-2.5">
-      <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
-      <div>
-       <strong className="font-black theme-text-app">
-        {lowStockItems.length} {translate(lang, 'low_stock_warning')}
-       </strong>
-       <p className="text-[11px] theme-text-secondary font-medium">
-        {lowStockItems.map((i) => i.name).slice(0, 3).join(', ')}
-        {lowStockItems.length > 3 ? '...' : ''}
-       </p>
-      </div>
-     </div>
-     <button
-      type="button"
-      role="button"
-      tabIndex={0}
-      style={{ touchAction: 'manipulation' }}
-      onClick={() => {
-       console.log('[InventoryManager] Filter all tapped from low stock banner');
-       setActiveFilterOption(null);
-      }}
-      onKeyDown={(e) => {
-       if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        setActiveFilterOption(null);
-       }
-      }}
-      className="text-xs font-extrabold theme-bg-surface-subtle theme-text-accent border theme-border-subtle px-3 py-1.5 rounded-xl shrink-0 transition-all active:scale-95 hover:bg-white/10 select-none touch-manipulation cursor-pointer"
-     >
-      {translate(lang, 'filter_all')}
-     </button>
     </div>
    )}
 
@@ -1796,7 +1236,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
 
        {/* Variants List if present */}
        {hasVariants && (
-        <div className="space-y-1.5 p-3 rounded-2xl bg-slate-800/40 border border-slate-700/50 max-h-48 overflow-y-auto">
+        <div className="space-y-1.5 p-3 rounded-2xl bg-slate-800/40 border border-slate-700/50 max-h-48 overflow-y-auto no-scrollbar">
          <span className="text-[10px] font-extrabold uppercase tracking-wider theme-text-secondary block">
           Portions / Variants ({item.variants!.length})
          </span>
@@ -2167,7 +1607,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
    {/* 2. ENHANCED MULTI-ITEM SELL NOW MODAL */}
    {sellModalOpen && initialSellProduct && (
     <div
-     className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in"
+     className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] animate-in fade-in duration-200"
      onClick={(e) => {
       if (e.target === e.currentTarget) {
        console.log('[SellModal] Backdrop tapped -> closing modal');
@@ -2179,7 +1619,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
      }}
     >
      <div
-      className="theme-card rounded-3xl max-w-md w-full p-4 sm:p-5 shadow-2xl border animate-in my-auto max-h-[90vh] flex flex-col justify-between"
+      className="theme-card rounded-3xl max-w-md w-full p-4 sm:p-5 shadow-2xl border animate-in my-auto max-h-[85vh] flex flex-col justify-between"
       onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}
       style={{ touchAction: 'manipulation' }}
      >
@@ -2223,15 +1663,16 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
        </button>
       </div>
 
-      <div className="space-y-3.5 py-3 overflow-y-auto pr-1 flex-1">
-       {/* Budget Input Field: Label "Buyer's Money" */}
-       <div className="theme-bg-surface-subtle p-3 rounded-2xl border theme-border-subtle">
-        <div className="flex items-center justify-between gap-2 mb-1">
-         <label className="text-xs font-black theme-text-app">
-          {lang === 'tl' ? "Pera ng Mamimili (Buyer's Money)" : "Buyer's Money"}
+      <div className="space-y-3.5 py-3 overflow-y-auto no-scrollbar pr-1 flex-1">
+       {/* Buyer's Cash Input */}
+       <div className="theme-bg-surface-subtle p-3.5 rounded-2xl border theme-border-subtle">
+        <div className="flex items-center justify-between gap-2 mb-1.5">
+         <label className="text-xs font-black theme-text-app flex items-center gap-1.5">
+          <Banknote className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+          <span>{lang === 'tl' ? "Pera ng Mamimili (Spot Cash)" : "Buyer's Cash"}</span>
          </label>
          <span className="text-[10px] font-bold theme-text-secondary">
-          {lang === 'tl' ? 'Opsyonal' : 'Optional'}
+          {lang === 'tl' ? 'Opsyonal para sa Sukli' : 'Optional for Change'}
          </span>
         </div>
         <div className="relative">
@@ -2251,7 +1692,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             setBuyersMoneyInput('');
            }
           }}
-          placeholder={lang === 'tl' ? 'Hal. 200' : 'e.g. 200'}
+          placeholder={lang === 'tl' ? 'Hal. 500' : 'e.g. 500'}
           className="w-full theme-input border rounded-xl py-2 pl-7 pr-3 text-sm font-black theme-text-app focus:outline-none"
          />
         </div>
@@ -2425,7 +1866,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
             />
            </div>
 
-           <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-[160px] max-h-[50vh]">
+           <div className="flex-1 overflow-y-auto no-scrollbar space-y-2 pr-1 min-h-[160px] max-h-[50vh]">
             {(() => {
              const query = pickerSearchTerm.trim().toLowerCase();
              const matchingItems = inventory.filter((item) => {
@@ -2558,7 +1999,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
         )}
 
         {/* Running Cart Items List or Empty State */}
-        <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+        <div className="space-y-2 max-h-52 overflow-y-auto no-scrollbar pr-1">
          {cart.length === 0 ? (
           <div className="theme-bg-surface-subtle p-4 rounded-2xl border theme-border-subtle text-center space-y-1">
            <p className="text-xs font-bold theme-text-secondary">
@@ -2743,8 +2184,8 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
 
       </div>
 
-      {/* Action Buttons: [Cancel] [Credit] [Sell] */}
-      <div className="grid grid-cols-3 gap-2 pt-3 border-t theme-border-subtle shrink-0 items-center">
+      {/* Action Buttons: [Cancel] [Sell] */}
+      <div className="flex items-center gap-2 pt-3 border-t theme-border-subtle shrink-0">
        {/* 1. Cancel */}
        <button
         type="button"
@@ -2767,68 +2208,60 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
           setIsAddProductPickerOpen(false);
          }
         }}
-        className="w-full py-2.5 rounded-xl theme-text-secondary font-bold text-xs hover:bg-white/10 cursor-pointer select-none touch-manipulation text-center"
+        className="w-1/3 py-2.5 rounded-xl theme-text-secondary font-bold text-xs hover:bg-white/10 cursor-pointer select-none touch-manipulation text-center border theme-border-subtle"
        >
         {translate(lang, 'btn_cancel') || 'Cancel'}
        </button>
 
-       {/* 2. Credit (Middle Button) */}
-       <button
-        type="button"
-        role="button"
-        tabIndex={isCartEmpty || hasExceededStock ? -1 : 0}
-        style={{ touchAction: 'manipulation' }}
-        onClick={handleOpenCreditModal}
-        onKeyDown={(e) => {
-         if (
-          (e.key === 'Enter' || e.key === ' ') &&
-          !isCartEmpty &&
-          !hasExceededStock
-         ) {
-          e.preventDefault();
-          handleOpenCreditModal();
-         }
-        }}
-        disabled={isCartEmpty || hasExceededStock}
-        className={`w-full py-2.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-1 select-none touch-manipulation cursor-pointer ${
-         isCartEmpty || hasExceededStock
-          ? 'opacity-40 cursor-not-allowed theme-bg-surface-subtle theme-text-secondary border theme-border-subtle'
-          : 'bg-amber-500 hover:bg-amber-600 text-white shadow-md active:scale-95'
-        }`}
-        title={lang === 'tl' ? 'I-record bilang Pautang' : 'Record as Credit'}
-       >
-        <CreditCard className="w-3.5 h-3.5 shrink-0" />
-        <span>{lang === 'tl' ? 'Pautang' : 'Credit'}</span>
-       </button>
+       <div className="flex-1 flex gap-2">
+        {/* 2. Credit Button */}
+        <button
+         type="button"
+         onClick={() => setIsCreditCustomerModalOpen(true)}
+         disabled={isCartEmpty || hasExceededStock || hasInsufficientBudget}
+         className={`flex-1 py-2.5 rounded-xl font-black text-xs shadow-2xs transition-all active:scale-95 flex items-center justify-center gap-1.5 select-none touch-manipulation ${
+          isCartEmpty || hasExceededStock || hasInsufficientBudget
+           ? 'opacity-40 cursor-not-allowed bg-amber-500/20 text-amber-500'
+           : 'bg-amber-500 text-white hover:bg-amber-600'
+         }`}
+        >
+         <CreditCard className="w-3.5 h-3.5 shrink-0" />
+         <span>{lang === 'tl' ? 'Pautang' : 'Credit'}</span>
+        </button>
 
-       {/* 3. Sell */}
-       <button
-        type="button"
-        role="button"
-        tabIndex={isCartEmpty || hasExceededStock || hasInsufficientBudget ? -1 : 0}
-        style={{ touchAction: 'manipulation' }}
-        onClick={handleConfirmSellNow}
-        onKeyDown={(e) => {
-         if (
-          (e.key === 'Enter' || e.key === ' ') &&
-          !isCartEmpty &&
-          !hasExceededStock &&
-          !hasInsufficientBudget
-         ) {
-          e.preventDefault();
-          handleConfirmSellNow();
-         }
-        }}
-        disabled={isCartEmpty || hasExceededStock || hasInsufficientBudget}
-        className={`w-full theme-bg-primary text-white py-2.5 rounded-xl font-black text-xs shadow-2xs transition-all active:scale-95 flex items-center justify-center gap-1 select-none touch-manipulation ${
-         isCartEmpty || hasExceededStock || hasInsufficientBudget
-          ? 'opacity-40 cursor-not-allowed'
-          : 'cursor-pointer'
-        }`}
-       >
-        <ShoppingBag className="w-3.5 h-3.5 text-white/90 shrink-0" />
-        <span>{translate(lang, 'btn_sell') || 'Sell'}</span>
-       </button>
+        {/* 3. Sell / Complete Sale */}
+        <button
+         type="button"
+         role="button"
+         tabIndex={isCartEmpty || hasExceededStock || hasInsufficientBudget ? -1 : 0}
+         style={{ touchAction: 'manipulation' }}
+         onClick={handleConfirmSellNow}
+         onKeyDown={(e) => {
+          if (
+           (e.key === 'Enter' || e.key === ' ') &&
+           !isCartEmpty &&
+           !hasExceededStock &&
+           !hasInsufficientBudget
+          ) {
+           e.preventDefault();
+           handleConfirmSellNow();
+          }
+         }}
+         disabled={isCartEmpty || hasExceededStock || hasInsufficientBudget}
+         className={`flex-1 theme-bg-primary text-white py-2.5 rounded-xl font-black text-xs shadow-2xs transition-all active:scale-95 flex items-center justify-center gap-1.5 select-none touch-manipulation ${
+          isCartEmpty || hasExceededStock || hasInsufficientBudget
+           ? 'opacity-40 cursor-not-allowed'
+           : 'cursor-pointer'
+         }`}
+        >
+         <ShoppingBag className="w-3.5 h-3.5 text-white/90 shrink-0" />
+         <span className="truncate">
+          {lang === 'tl'
+           ? `Benta (${formatPeso(totalSaleAmount)})`
+           : `Sell (${formatPeso(totalSaleAmount)})`}
+         </span>
+        </button>
+       </div>
       </div>
      </div>
     </div>
@@ -2934,7 +2367,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
          <span className="text-[10px] font-extrabold uppercase tracking-wider theme-text-secondary block">
           {lang === 'tl' ? 'Pumili sa umiiral na suki:' : 'Select existing customer:'}
          </span>
-         <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-1">
+         <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto no-scrollbar pr-1">
           {existingCustomersList.map((cust) => (
            <button
             key={cust.id || cust.name}
@@ -3008,6 +2441,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
      isOpen={isModalOpen}
      onClose={() => setIsModalOpen(false)}
      editingItem={editingItem}
+      onOpenScanner={() => setIsScannerOpen(true)}
      lang={lang}
      name={name}
      setName={setName}
@@ -3071,6 +2505,6 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({
     onConfirm={confirmState.onConfirm}
     onCancel={closeConfirm}
    />
-  </div>
- );
+   </div>
+  );
 };

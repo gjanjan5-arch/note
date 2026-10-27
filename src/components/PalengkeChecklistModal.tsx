@@ -20,6 +20,8 @@ import { formatPeso } from '../utils/formatters';
 import { translate, type LanguageCode } from '../utils/i18n';
 import { getStoreProfile } from '../utils/storeSettings';
 import { safeStorage } from '../utils/safeStorage';
+import { useExplorationTutorial } from '../context/ExplorationTutorialContext';
+import { useBodyScrollLock } from '../utils/scrollLock';
 
 interface PalengkeChecklistModalProps {
   isOpen: boolean;
@@ -53,23 +55,27 @@ export const PalengkeChecklistModal: React.FC<PalengkeChecklistModalProps> = ({
   const [newItemCost, setNewItemCost] = useState('');
   const [isAddingCustom, setIsAddingCustom] = useState(false);
   const [copiedToast, setCopiedToast] = useState(false);
+  const { triggerTip } = useExplorationTutorial();
 
   useEffect(() => {
-    if (!isOpen) return;
-    const originalOverflow = document.body.style.overflow;
-    const originalTouchAction = document.body.style.touchAction;
-    const originalOverscroll = document.body.style.overscrollBehavior;
+    if (isOpen) {
+      triggerTip({
+        id: 'palengke_checklist',
+        icon: ShoppingCart,
+        title: {
+          tl: 'Talaan sa Palengke',
+          en: 'Market Shopping Checklist',
+        },
+        desc: {
+          tl: 'Awtomatikong inililista rito ang mga paubos mong paninda para handa ka kapag namili sa palengke o wholesale grocery.',
+          en: 'Automatically compiles all low-stock items into an organized checklist for your grocery and wholesale market trips.',
+        },
+      });
+    }
+  }, [isOpen, triggerTip]);
 
-    document.body.style.overflow = 'hidden';
-    document.body.style.touchAction = 'none';
-    document.body.style.overscrollBehavior = 'none';
-
-    return () => {
-      document.body.style.overflow = originalOverflow;
-      document.body.style.touchAction = originalTouchAction;
-      document.body.style.overscrollBehavior = originalOverscroll || '';
-    };
-  }, [isOpen]);
+  // Prevent background scrolling while open with centralized leak-proof lock
+  useBodyScrollLock(isOpen);
 
   // Load custom items from safeStorage
   useEffect(() => {
@@ -410,7 +416,7 @@ export const PalengkeChecklistModal: React.FC<PalengkeChecklistModalProps> = ({
           )}
 
           {/* List Content */}
-          <div className="p-4 sm:p-5 overflow-y-auto space-y-2 flex-1">
+          <div className="p-4 sm:p-5 overflow-y-auto no-scrollbar space-y-2 flex-1">
             {copiedToast && (
               <div className="p-2.5 rounded-xl bg-emerald-500 text-white text-center text-xs font-black shadow-lg">
                 {translate(lang, 'palengke_copied')}

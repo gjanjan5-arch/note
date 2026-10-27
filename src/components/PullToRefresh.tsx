@@ -37,7 +37,8 @@ export const PullToRefresh: React.FC<PullToRefreshProps> = ({ onRefresh, childre
         );
       }
 
-      await Promise.resolve(onRefresh());
+      const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 2500));
+      await Promise.race([Promise.resolve(onRefresh()), timeoutPromise]);
 
       setShowSuccessToast(true);
       setTimeout(() => setShowSuccessToast(false), 2200);
@@ -159,7 +160,7 @@ export const PullToRefresh: React.FC<PullToRefreshProps> = ({ onRefresh, childre
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
-      className="relative select-none"
+      className="relative"
     >
       {/* Toast Notification when refreshed & caches cleared */}
       {showSuccessToast && (

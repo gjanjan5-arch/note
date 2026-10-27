@@ -16,6 +16,7 @@ import { translate, type LanguageCode } from '../utils/i18n';
 import { getStoreProfile } from '../utils/storeSettings';
 import { safeStorage } from '../utils/safeStorage';
 import { ModalPortal } from './ModalPortal';
+import { useExplorationTutorial } from '../context/ExplorationTutorialContext';
 
 interface DailyRemitModalProps {
   isOpen: boolean;
@@ -53,6 +54,24 @@ export const DailyRemitModal: React.FC<DailyRemitModalProps> = ({
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [todaySalesTotal, setTodaySalesTotal] = useState<number>(0);
   const [copiedToast, setCopiedToast] = useState(false);
+  const { triggerTip } = useExplorationTutorial();
+
+  useEffect(() => {
+    if (isOpen) {
+      triggerTip({
+        id: 'daily_remit',
+        icon: Banknote,
+        title: {
+          tl: 'Kwenta ng Benta (Daily Remit)',
+          en: 'Daily Cash Remit',
+        },
+        desc: {
+          tl: 'Bilangin ang mga barya at perang papel sa kaha sa pagtatapos ng araw para masiguradong tugma ang pera sa naitalang benta.',
+          en: 'Count your cash drawer bills and coins at the end of the day to ensure cash matches recorded sales.',
+        },
+      });
+    }
+  }, [isOpen, triggerTip]);
 
   useEffect(() => {
     if (isOpen) {

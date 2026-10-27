@@ -3,6 +3,7 @@ import {
  X,
  Languages,
  Store,
+ ShoppingBag,
  Database,
  HelpCircle,
  Info,
@@ -14,7 +15,15 @@ import {
  Moon,
  Sun,
  Layers,
+ Zap,
+ Camera,
+ Upload,
+ Loader2,
 } from 'lucide-react';
+import { db } from '../db/db';
+import { compressImageToBlob } from '../utils/imageUtils';
+import { StoreLogoDisplay } from './StoreLogoDisplay';
+import { ImageCropModal } from './ImageCropModal';
 import {
  AVAILABLE_LANGUAGES,
  getInstalledLanguages,
@@ -35,9 +44,55 @@ import {
  type AppearanceMode,
 } from '../utils/theme';
 import { useTheme } from '../context/ThemeContext';
+import { usePerformance, type PerformanceMode } from '../context/PerformanceContext';
 import { DataManagementSection } from './settings/DataManagementSection';
+import { useExplorationTutorial } from '../context/ExplorationTutorialContext';
 import { DeveloperProfileModal } from './DeveloperProfileModal';
 import { ModalPortal } from './ModalPortal';
+
+const PERFORMANCE_OPTIONS: Array<{
+ id: PerformanceMode;
+ label: { en: string; tl: string };
+ desc: { en: string; tl: string };
+ icon: string;
+}> = [
+ {
+  id: 'AUTO',
+  label: {
+   tl: '🟢 Auto (Smart / Rekomendado)',
+   en: '🟢 Auto (Smart / Recommended)',
+  },
+  desc: {
+   tl: 'Awtomatikong umaangkop sa lakas ng iyong cellphone.',
+   en: 'Automatically adapts to your device capabilities.',
+  },
+  icon: '🟢',
+ },
+ {
+  id: 'ECO',
+  label: {
+   tl: '🔋 Eco Mode (Makatipid / Banayad sa Phone)',
+   en: '🔋 Eco Mode (Battery & RAM Saver)',
+  },
+  desc: {
+   tl: 'Binabawasan ang mga animations at background tasks para bumilis at tumagal ang low-RAM o budget phones.',
+   en: 'Reduces animations and background tasks to boost speed and save battery on budget devices.',
+  },
+  icon: '🔋',
+ },
+ {
+  id: 'FULL',
+  label: {
+   tl: '⚡ Full Performance (Mataas na Kalidad)',
+   en: '⚡ Full Performance (Maximum Quality)',
+  },
+  desc: {
+   tl: 'Binubuksan ang lahat ng visual effects at mabilisang sync. Maaaring mas mabilis makalobat.',
+   en: 'Enables all visual effects and real-time sync. May consume more battery.',
+  },
+  icon: '⚡',
+ },
+];
 
 interface SettingsModalProps {
  isOpen: boolean;
@@ -46,7 +101,7 @@ interface SettingsModalProps {
  appMode?: 'seller' | 'buyer';
  onSwitchMode?: (mode: 'seller' | 'buyer') => void;
  onLanguageChange: (newLang: LanguageCode) => void;
- onStartTutorial: () => void;
+ onStartTutorial?: () => void;
  onDataChanged: () => void;
  onOpenStoreQR?: () => void;
  initialTab?: 'GENERAL' | 'STORE' | 'DATA' | 'HELP' | 'ABOUT';
@@ -66,10 +121,37 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
  const [activeTab, setActiveTab] = useState<'GENERAL' | 'STORE' | 'DATA' | 'HELP' | 'ABOUT'>(initialTab);
  const [isDeveloperModalOpen, setIsDeveloperModalOpen] = useState(false);
+ const { resetAllTips } = useExplorationTutorial();
+ const [resetTipsToast, setResetTipsToast] = useState(false);
 
  const scrollContainerRef = useRef<HTMLDivElement>(null);
+ const isDragging = useRef(false);
+ const startX = useRef(0);
+ const scrollLeft = useRef(0);
  const [canScrollLeft, setCanScrollLeft] = useState(false);
  const [canScrollRight, setCanScrollRight] = useState(false);
+
+ const handleMouseDown = (e: React.MouseEvent) => {
+  isDragging.current = true;
+  startX.current = e.pageX - scrollContainerRef.current!.offsetLeft;
+  scrollLeft.current = scrollContainerRef.current!.scrollLeft;
+ };
+
+ const handleMouseLeave = () => {
+  isDragging.current = false;
+ };
+
+ const handleMouseUp = () => {
+  isDragging.current = false;
+ };
+
+ const handleMouseMove = (e: React.MouseEvent) => {
+  if (!isDragging.current) return;
+  e.preventDefault();
+  const x = e.pageX - scrollContainerRef.current!.offsetLeft;
+  const walk = (x - startX.current) * 2;
+  scrollContainerRef.current!.scrollLeft = scrollLeft.current - walk;
+ };
 
  const checkScroll = useCallback(() => {
   if (scrollContainerRef.current) {
@@ -99,9 +181,60 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
 
  const { palette: currentPalette, appearanceMode: currentMode, setPalette, setAppearanceMode } = useTheme();
+ const { mode: perfMode, resolvedMode, setMode: setPerfMode } = usePerformance();
  const [installedLangs, setInstalledLangs] = useState<LanguageCode[]>(getInstalledLanguages());
  const [storeProfile, setStoreProfile] = useState<StoreProfile>(getStoreProfile());
  const [storeSaveSuccess, setStoreSaveSuccess] = useState(false);
+ const fileInputRef = useRef<HTMLInputElement>(null);
+ const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+ const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
+
+ const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = () => {
+   setCropImageSrc(reader.result as string);
+  };
+  reader.readAsDataURL(file);
+
+  if (fileInputRef.current) {
+   fileInputRef.current.value = '';
+  }
+ };
+
+ const handleApplyCroppedLogo = async (croppedBlob: Blob) => {
+  setCropImageSrc(null);
+  try {
+   setIsUploadingLogo(true);
+   if (storeProfile.logoAssetId) {
+    try {
+     await db.storeAssets.delete(storeProfile.logoAssetId);
+    } catch {
+     // Ignore delete failure
+    }
+   }
+
+   const newAssetId = await db.storeAssets.add({ data: croppedBlob });
+   setStoreProfile((prev) => ({ ...prev, logoAssetId: Number(newAssetId) }));
+  } catch (err) {
+   console.error('Failed to process store logo:', err);
+  } finally {
+   setIsUploadingLogo(false);
+  }
+ };
+
+ const handleRemoveLogo = async () => {
+  if (storeProfile.logoAssetId) {
+   try {
+    await db.storeAssets.delete(storeProfile.logoAssetId);
+   } catch {
+    // Ignore error
+   }
+  }
+  setStoreProfile((prev) => ({ ...prev, logoAssetId: undefined }));
+ };
 
  if (!isOpen) return null;
 
@@ -178,7 +311,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
      <div
       ref={scrollContainerRef}
       onScroll={checkScroll}
-      className="flex items-center gap-1.5 p-2 overflow-x-auto no-scrollbar relative"
+      onMouseDown={handleMouseDown}
+      onMouseLeave={handleMouseLeave}
+      onMouseUp={handleMouseUp}
+      onMouseMove={handleMouseMove}
+      className="flex items-center gap-1.5 p-2 overflow-x-auto no-scrollbar relative touch-pan-x"
       style={{
        maskImage: canScrollLeft && canScrollRight
         ? 'linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent)'
@@ -356,6 +493,67 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
        </div>
 
+       {/* Performance Mode Section */}
+       <div id="settings-performance-section" className="space-y-2.5 pt-3 border-t theme-border-subtle">
+        <div>
+         <div className="flex items-center justify-between gap-2">
+          <h4 className="font-extrabold theme-text-app text-sm flex items-center gap-1.5">
+           <Zap className="w-4 h-4 text-[var(--color-primary)]" />
+           <span>{lang === 'tl' ? 'Performance Mode' : 'Performance Mode'}</span>
+          </h4>
+          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full theme-bg-surface-subtle theme-text-accent border theme-border-subtle">
+           {perfMode === 'AUTO'
+            ? (lang === 'tl' ? `Awtomatiko (${resolvedMode})` : `Auto (${resolvedMode})`)
+            : (lang === 'tl' ? `Manual: ${perfMode}` : `Manual: ${perfMode}`)}
+          </span>
+         </div>
+         <p className="text-xs theme-text-secondary mt-0.5">
+          {lang === 'tl'
+           ? 'I-adjust ang bilis, RAM, at paggamit ng battery ayon sa kakayahan ng cellphone.'
+           : 'Optimize speed, RAM usage, and battery life based on your device capabilities.'}
+         </p>
+        </div>
+
+        {/* 3-Segment Pill Switcher */}
+        <div className="grid grid-cols-3 p-1 rounded-2xl bg-black/5 dark:bg-white/5 border theme-border-subtle gap-1">
+         {PERFORMANCE_OPTIONS.map((opt) => {
+          const isSelected = perfMode === opt.id;
+          return (
+           <button
+            key={opt.id}
+            type="button"
+            onClick={() => setPerfMode(opt.id)}
+            className={`py-2 px-1 rounded-xl text-center transition-all duration-200 flex flex-col items-center justify-center gap-0.5 cursor-pointer active:scale-95 touch-manipulation select-none ${
+             isSelected
+              ? 'theme-bg-primary text-white shadow-xs font-black'
+              : 'theme-text-secondary hover:theme-text-app hover:bg-black/5 dark:hover:bg-white/5'
+            }`}
+           >
+            <span className="text-sm leading-none">{opt.icon}</span>
+            <span className="text-[11px] font-extrabold truncate max-w-full">
+             {opt.id === 'AUTO' ? 'Auto' : opt.id === 'ECO' ? 'Eco' : 'Full'}
+            </span>
+           </button>
+          );
+         })}
+        </div>
+
+        {/* Active Mode Explanation / Helper Text Banner */}
+        <div className="p-3 rounded-2xl theme-bg-surface-subtle border theme-border-subtle flex items-start gap-2.5 transition-opacity">
+         <div className="text-base shrink-0 mt-0.5">
+          {perfMode === 'AUTO' ? '🟢' : perfMode === 'ECO' ? '🔋' : '⚡'}
+         </div>
+         <div className="space-y-0.5 flex-1 min-w-0">
+          <div className="text-xs font-black theme-text-app">
+           {PERFORMANCE_OPTIONS.find((o) => o.id === perfMode)?.label[lang === 'tl' ? 'tl' : 'en']}
+          </div>
+          <div className="text-[11px] theme-text-secondary leading-relaxed">
+           {PERFORMANCE_OPTIONS.find((o) => o.id === perfMode)?.desc[lang === 'tl' ? 'tl' : 'en']}
+          </div>
+         </div>
+        </div>
+       </div>
+
        {/* 3. Language Management Section */}
        <div id="settings-lang-section" className="space-y-3 pt-3 border-t theme-border-subtle">
         <div>
@@ -476,6 +674,63 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         <p className="text-xs theme-text-secondary">
          Custom details used in reminder messages and receipts.
         </p>
+       </div>
+
+       {/* Store Logo Section */}
+       <div className="p-3.5 rounded-2xl theme-bg-surface-subtle border theme-border-subtle flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+         <div className="relative shrink-0">
+          <StoreLogoDisplay
+           logoAssetId={storeProfile.logoAssetId}
+           storeName={storeProfile.storeName || 'T'}
+           className="w-14 h-14"
+          />
+          {isUploadingLogo && (
+           <div className="absolute inset-0 bg-black/60 rounded-2xl flex items-center justify-center text-white">
+            <Loader2 className="w-4 h-4 animate-spin text-white" />
+           </div>
+          )}
+         </div>
+         <div className="min-w-0">
+          <div className="font-extrabold text-xs theme-text-app truncate">
+           {lang === 'tl' ? 'Logo ng Tindahan' : 'Store Logo'}
+          </div>
+          <div className="text-[11px] theme-text-secondary leading-tight mt-0.5">
+           {storeProfile.logoAssetId
+            ? (lang === 'tl' ? 'Lalabas sa header, buyer mode, at resibo' : 'Active on header, buyer mode & receipts')
+            : (lang === 'tl' ? 'Default badge ang gamit' : 'Using default badge')}
+          </div>
+         </div>
+        </div>
+
+        <div className="flex items-center gap-1.5 shrink-0">
+         <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleLogoUpload}
+         />
+         <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isUploadingLogo}
+          className="theme-bg-primary hover:opacity-90 text-white font-extrabold text-xs px-3 py-2 rounded-xl shadow-2xs transition-all active:scale-95 cursor-pointer touch-manipulation flex items-center gap-1.5"
+         >
+          <Camera className="w-3.5 h-3.5" />
+          <span>{storeProfile.logoAssetId ? (lang === 'tl' ? 'Palitan' : 'Change') : (lang === 'tl' ? 'I-upload' : 'Upload')}</span>
+         </button>
+         {storeProfile.logoAssetId ? (
+          <button
+           type="button"
+           onClick={handleRemoveLogo}
+           className="theme-text-secondary hover:text-red-500 font-bold p-2 rounded-xl hover:bg-red-500/10 cursor-pointer transition-colors"
+           title={lang === 'tl' ? 'Alisin ang Logo' : 'Remove Logo'}
+          >
+           <Trash2 className="w-4 h-4" />
+          </button>
+         ) : null}
+        </div>
        </div>
 
        <div>
@@ -618,25 +873,39 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </p>
        </div>
 
-       {/* Start Tutorial Again */}
+       {/* Exploration Tips Reset */}
        <div className="theme-bg-surface-subtle border theme-border-subtle p-4 rounded-2xl space-y-2">
         <div className="flex items-center gap-2">
-         <Play className="w-5 h-5 theme-text-accent fill-current" />
-         <h5 className="font-black theme-text-app text-sm">{translate(lang, 'start_tutorial_again')}</h5>
+         <RotateCcw className="w-5 h-5 theme-text-accent" />
+         <h5 className="font-black theme-text-app text-sm">
+          {lang === 'tl' ? 'Gabay sa Pag-explore (Exploration Tips)' : 'Exploration Tips Guide'}
+         </h5>
         </div>
         <p className="text-xs theme-text-secondary leading-relaxed font-medium">
-         {translate(lang, 'tutorial_desc')}
+         {lang === 'tl'
+          ? 'Kusa at magalang na lumilitaw ang mga maikling gabay habang ginagamit ang bawat bahagi ng app (resibo, pautang, imbentaryo, atbp.) nang hindi humaharang sa iyong trabaho.'
+          : 'Contextual tips appear unobtrusively as you use features (receipts, credit ledger, inventory, etc.) without interrupting your work.'}
         </p>
-        <button
-         type="button"
-         onClick={() => {
-          onClose();
-          onStartTutorial();
-         }}
-         className="theme-bg-primary hover:opacity-90 text-white font-extrabold text-xs px-4 py-2 rounded-xl mt-1 shadow-2xs active:scale-95 cursor-pointer touch-manipulation"
-        >
-         Start Walkthrough
-        </button>
+        <div className="flex items-center gap-3 pt-1">
+         <button
+          type="button"
+          onClick={() => {
+           resetAllTips();
+           setResetTipsToast(true);
+           setTimeout(() => setResetTipsToast(false), 3000);
+          }}
+          className="theme-bg-primary hover:opacity-90 text-white font-extrabold text-xs px-4 py-2 rounded-xl shadow-2xs active:scale-95 cursor-pointer touch-manipulation flex items-center gap-1.5"
+         >
+          <RotateCcw className="w-3.5 h-3.5" />
+          <span>{lang === 'tl' ? 'I-reset ang mga Gabay' : 'Reset Exploration Tips'}</span>
+         </button>
+         {resetTipsToast && (
+          <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+           <Check className="w-3.5 h-3.5" />
+           {lang === 'tl' ? 'Nai-reset na ang mga gabay!' : 'Tips reset successfully!'}
+          </span>
+         )}
+        </div>
        </div>
 
        {/* How Mabilisang Tala Works */}
@@ -682,6 +951,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     isOpen={isDeveloperModalOpen} 
     onClose={() => setIsDeveloperModalOpen(false)} 
     lang={lang} 
+   />
+   <ImageCropModal
+    isOpen={Boolean(cropImageSrc)}
+    imageSrc={cropImageSrc}
+    onClose={() => setCropImageSrc(null)}
+    onCropComplete={handleApplyCroppedLogo}
+    lang={lang}
+    title={lang === 'tl' ? 'I-crop ang Logo ng Tindahan' : 'Crop Store Logo'}
+    outputSize={256}
    />
   </div>
  );
